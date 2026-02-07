@@ -103,25 +103,32 @@ const getTorToken = async () => {
 /* ---------------- TOR → VEHICLE SYNC ---------------- */
 const syncFleetFromTOR = async () => {
   try {
-    // Refresh token if expired
-    if (!authToken && !(await getTorToken())) return;
+    // Ensure valid token
+    if (!authToken && !(await getTorToken())) {
+      console.error('❌ TOR token missing, cannot sync fleet');
+      return;
+    }
 
     console.log('🔄 TOR sync started');
 
-    // Send empty object payload instead of empty strings
-    const metaList = await fetchAllPages('/EquipDetails/GetVehicleDetails', { hardwareId: "", equipmentCode: "" });
-    const telemetryList = await fetchAllPages('/MachineData/GetLatestMachineData', { hardwareId: "", equipmentCode: "" });
+    // Payload to fetch all vehicles
+    const payload = { hardwareId: "", equipmentCode: "" };
 
+    // Fetch vehicle meta and telemetry
+    const metaList = await fetchAllPages('/EquipDetails/GetVehicleDetails', payload);
+    const telemetryList = await fetchAllPages('/MachineData/GetLatestMachineData', payload);
 
     console.log(`META COUNT: ${metaList.length}`);
     console.log(`TELEMETRY COUNT: ${telemetryList.length}`);
 
+    // Map hardwareId → meta for easy lookup
     const metaMap = new Map();
     metaList.forEach(m => {
       const hwid = String(getVal(m, ['HWID', 'hardwareId'], '')).trim();
       if (hwid) metaMap.set(hwid, m);
     });
 
+    // Insert/update telemetry into MySQL
     for (const v of telemetryList) {
       const hwid = String(getVal(v, ['HWID', 'hardwareId'], '')).trim();
       if (!hwid) continue;
@@ -131,7 +138,7 @@ const syncFleetFromTOR = async () => {
         vehicleId: hwid,
         displayDeviceId: getVal(meta, ['equipmentCode'], hwid),
         registrationNo: getVal(meta, ['vehicleRegNo'], '---'),
-        status: getVal(v, ['MachineStatus'], 'Off'),
+        status: getVal(v, ['MachineStatus'], 'Unknown'),
         lat: Number(getVal(v, ['Latitude'], 0)),
         lng: Number(getVal(v, ['Longitude'], 0)),
         speed: Number(getVal(v, ['Speed'], 0)),
@@ -140,40 +147,45 @@ const syncFleetFromTOR = async () => {
         lastUpdate: new Date()
       };
 
-      await db.execute(
-        `INSERT INTO vehicles
-          (vehicleId, displayDeviceId, registrationNo, status, lat, lng, speed, battery, odometer, lastUpdate)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE
-           displayDeviceId=VALUES(displayDeviceId),
-           registrationNo=VALUES(registrationNo),
-           status=VALUES(status),
-           lat=VALUES(lat),
-           lng=VALUES(lng),
-           speed=VALUES(speed),
-           battery=VALUES(battery),
-           odometer=VALUES(odometer),
-           lastUpdate=VALUES(lastUpdate)`,
-        [
-          vehicleData.vehicleId,
-          vehicleData.displayDeviceId,
-          vehicleData.registrationNo,
-          vehicleData.status,
-          vehicleData.lat,
-          vehicleData.lng,
-          vehicleData.speed,
-          vehicleData.battery,
-          vehicleData.odometer,
-          vehicleData.lastUpdate
-        ]
-      );
+      try {
+        await db.execute(
+          `INSERT INTO vehicles
+            (vehicleId, displayDeviceId, registrationNo, status, lat, lng, speed, battery, odometer, lastUpdate)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             displayDeviceId=VALUES(displayDeviceId),
+             registrationNo=VALUES(registrationNo),
+             status=VALUES(status),
+             lat=VALUES(lat),
+             lng=VALUES(lng),
+             speed=VALUES(speed),
+             battery=VALUES(battery),
+             odometer=VALUES(odometer),
+             lastUpdate=VALUES(lastUpdate)`,
+          [
+            vehicleData.vehicleId,
+            vehicleData.displayDeviceId,
+            vehicleData.registrationNo,
+            vehicleData.status,
+            vehicleData.lat,
+            vehicleData.lng,
+            vehicleData.speed,
+            vehicleData.battery,
+            vehicleData.odometer,
+            vehicleData.lastUpdate
+          ]
+        );
+      } catch (dbErr) {
+        console.error(`❌ DB insert failed for ${hwid}:`, dbErr.message);
+      }
     }
 
     console.log(`✅ TOR sync complete (${telemetryList.length} vehicles)`);
 
   } catch (err) {
     console.error('❌ TOR sync error:', err.message);
-    // Force token refresh next time
+
+    // Clear token so next sync refreshes it
     authToken = null;
   }
 };
@@ -181,6 +193,7 @@ const syncFleetFromTOR = async () => {
 // Start sync every 30 sec
 setInterval(syncFleetFromTOR, 30000);
 syncFleetFromTOR();
+
 
 /* ---------------- FORWARDER INGEST ---------------- */
 app.post('/api/telemetry/bulk', async (req, res) => {
