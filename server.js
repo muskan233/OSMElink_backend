@@ -33,18 +33,26 @@ let userStore = {
 
 /* ---------------- DB ---------------- */
 const loadDatabase = () => {
-  if (fs.existsSync(DB_FILE)) {
-    const data = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-    vehicleStore = data.vehicles || {};
-    userStore = { ...userStore, ...(data.users || {}) };
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const data = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+      vehicleStore = data.vehicles || {};
+      userStore = { ...userStore, ...(data.users || {}) };
+    }
+  } catch (e) {
+    console.error('❌ DB load failed:', e.message);
   }
 };
 
 const persistData = () => {
-  fs.writeFileSync(
-    DB_FILE,
-    JSON.stringify({ vehicles: vehicleStore, users: userStore }, null, 2)
-  );
+  try {
+    fs.writeFileSync(
+      DB_FILE,
+      JSON.stringify({ vehicles: vehicleStore, users: userStore }, null, 2)
+    );
+  } catch (e) {
+    console.error('❌ DB save failed:', e.message);
+  }
 };
 
 loadDatabase();
@@ -57,11 +65,20 @@ const getTorToken = async () => {
     const res = await axios.post(`${TOR_BASE_URL}/Auth/login`, {
       username: TOR_USER,
       password: TOR_PASS
-    });
+    }, { timeout: 15000 });
+
     authToken =
-      res.data?.token || res.data?.data?.token || res.data?.result?.token;
+      res.data?.token ||
+      res.data?.data?.token ||
+      res.data?.result?.token;
+
+    if (!authToken) {
+      console.error('❌ TOR auth succeeded but token missing');
+    }
+
     return authToken;
-  } catch {
+  } catch (e) {
+    console.error('❌ TOR auth failed:', e.message);
     authToken = null;
     return null;
   }
@@ -84,23 +101,35 @@ const fetchAllPages = async (endpoint, payload) => {
     const res = await axios.post(
       `${TOR_BASE_URL}${endpoint}`,
       { ...payload, pageNo, pageSize },
-      { headers: { Authorization: `Bearer ${authToken}` }, timeout: 60000 }
+      {
+        headers: { Authorization: `Bearer ${authToken}` },
+        timeout: 60000
+      }
     );
 
-    const list = res.data?.data || res.data?.result || [];
+    const list =
+      res.data?.data ||
+      res.data?.result ||
+      [];
+
     if (!Array.isArray(list) || list.length === 0) break;
 
     all.push(...list);
+
     if (list.length < pageSize) break;
     pageNo++;
   }
+
   return all;
 };
 
 /* ---------------- TOR → VEHICLE SYNC ---------------- */
 const syncFleetFromTOR = async () => {
   try {
-    if (!authToken && !(await getTorToken())) return;
+    if (!authToken && !(await getTorToken())) {
+      console.warn('⚠️ TOR token unavailable, skipping sync');
+      return;
+    }
 
     console.log('🔄 TOR sync started');
 
@@ -109,18 +138,26 @@ const syncFleetFromTOR = async () => {
       { hardwareId: '', equipmentCode: '' }
     );
 
+    const telemetryList = await fetchAllPages(
+      '/MachineData/GetLatestMachineData',
+      { hardwareId: '', equipmentCode: '' }
+    );
+
+    console.log(`META COUNT: ${metaList.length}`);
+    console.log(`TELEMETRY COUNT: ${telemetryList.length}`);
+
+    if (metaList.length === 0 && telemetryList.length === 0) {
+      console.warn('⚠️ TOR returned no data (possible IP restriction)');
+      return;
+    }
+
     const metaMap = new Map();
     metaList.forEach(m => {
       const hwid = String(getVal(m, ['HWID', 'hardwareId'], '')).trim();
       if (hwid) metaMap.set(hwid, m);
     });
 
-    const telemetry = await fetchAllPages(
-      '/MachineData/GetLatestMachineData',
-      { hardwareId: '', equipmentCode: '' }
-    );
-
-    telemetry.forEach(v => {
+    telemetryList.forEach(v => {
       const hwid = String(getVal(v, ['HWID', 'hardwareId'], '')).trim();
       if (!hwid) return;
 
@@ -156,9 +193,6 @@ const syncFleetFromTOR = async () => {
     console.error('❌ TOR sync error:', err.message);
     authToken = null;
   }
-  console.log('META COUNT:', metaList.length);
-  console.log('TELEMETRY COUNT:', telemetry.length);
-
 };
 
 /* ⏱ Run every 30 seconds */
