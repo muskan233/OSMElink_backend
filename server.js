@@ -4,6 +4,8 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
+import cors from 'cors';
+
 
 /* ---------------- SETUP ---------------- */
 const __filename = fileURLToPath(import.meta.url);
@@ -17,7 +19,12 @@ const TOR_BASE_URL = 'https://torapis.tor-iot.com';
 const TOR_USER = process.env.TOR_USER;
 const TOR_PASS = process.env.TOR_PASS;
 
-app.use(cors({ origin: '*' }));
+app.use(cors({
+  origin: [
+    'http://localhost:5173',   // local dev
+    'https://osmelink-frontend.onrender.com' // production frontend
+  ]
+}));
 app.use(express.json({ limit: '100mb' }));
 
 /* ---------------- STORES ---------------- */
