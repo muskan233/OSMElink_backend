@@ -22,10 +22,10 @@ app.use(express.json({ limit: '100mb' }));
 
 /* ---------------- MYSQL CONNECTION ---------------- */
 const db = await mysql.createPool({
-  host: process.env.DB_HOST,     // e.g., srv2197.hstgr.io
-  user: process.env.DB_USER,     // your MySQL user
-  password: process.env.DB_PASS, // your MySQL password
-  database: process.env.DB_NAME, // your database name
+  host: process.env.srv2197.hstgr.io,     // e.g., srv2197.hstgr.io
+  user: process.env.OSMElink,     // your MySQL user
+  password: process.env.RO@1234_hIt, // your MySQL password
+  database: process.env.OSMElink, // your database name
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
