@@ -5,7 +5,6 @@ import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import favicon from 'serve-favicon';
 
 dotenv.config();
 
@@ -24,13 +23,10 @@ app.use(cors({
 
 app.use(express.json({ limit: '100mb' }));
 
-// Serve static files
+// Serve static files (no favicon crash)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Favicon middleware to avoid 404 warnings
-app.use(favicon(path.join(__dirname, 'public', 'favicon.ico')));
 
 /* ---------------- MYSQL CONNECTION ---------------- */
 const db = await mysql.createPool({
@@ -56,7 +52,6 @@ const getVal = (obj, keys, fallback = null) => {
   return fallback;
 };
 
-// Fetch all pages from TOR API with pagination
 const fetchAllPages = async (endpoint, payload = {}) => {
   let all = [];
   let pageNo = 1;
@@ -122,7 +117,6 @@ const syncFleetFromTOR = async () => {
     console.log('🔄 TOR sync started');
 
     const payload = { hardwareId: "", equipmentCode: "" };
-
     const metaList = await fetchAllPages('/EquipDetails/GetVehicleDetails', payload);
     const telemetryList = await fetchAllPages('/MachineData/GetLatestMachineData', payload);
 
@@ -187,14 +181,12 @@ const syncFleetFromTOR = async () => {
     }
 
     console.log(`✅ TOR sync complete (${telemetryList.length} vehicles)`);
-
   } catch (err) {
     console.error('❌ TOR sync error:', err.message);
-    authToken = null; // refresh token next time
+    authToken = null;
   }
 };
 
-// Sync every 30 sec
 setInterval(syncFleetFromTOR, 30000);
 syncFleetFromTOR();
 
@@ -227,7 +219,7 @@ app.post('/api/telemetry/bulk', async (req, res) => {
           v.vehicleId,
           v.displayDeviceId || v.vehicleId,
           v.registrationNo || '---',
-          v.status || 'Unknown',
+          v.status || 'Off',
           v.location?.lat || 0,
           v.location?.lng || 0,
           v.metrics?.speed || 0,
@@ -240,7 +232,6 @@ app.post('/api/telemetry/bulk', async (req, res) => {
 
     const [rows] = await db.query('SELECT COUNT(*) as count FROM vehicles');
     res.json({ success: true, vehicles: rows[0].count });
-
   } catch (e) {
     console.error('❌ Bulk ingest failed:', e.message);
     res.status(500).json({ error: 'Server error' });
@@ -308,7 +299,7 @@ app.get('/debug-tor', async (req, res) => {
   }
 });
 
-/* ---------------- START SERVER ---------------- */
+/* ---------------- START ---------------- */
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Backend running on ${PORT}`);
 });
