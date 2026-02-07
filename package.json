@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "server": "node server.js",
     "forwarder": "node forwarder.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "@google/genai": "*",
