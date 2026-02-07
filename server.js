@@ -4,7 +4,6 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
-import cors from 'cors';
 
 
 /* ---------------- SETUP ---------------- */
