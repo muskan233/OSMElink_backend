@@ -109,8 +109,9 @@ const syncFleetFromTOR = async () => {
     console.log('🔄 TOR sync started');
 
     // Send empty object payload instead of empty strings
-    const metaList = await fetchAllPages('/EquipDetails/GetVehicleDetails', {});
-    const telemetryList = await fetchAllPages('/MachineData/GetLatestMachineData', {});
+    const metaList = await fetchAllPages('/EquipDetails/GetVehicleDetails', { hardwareId: "", equipmentCode: "" });
+    const telemetryList = await fetchAllPages('/MachineData/GetLatestMachineData', { hardwareId: "", equipmentCode: "" });
+
 
     console.log(`META COUNT: ${metaList.length}`);
     console.log(`TELEMETRY COUNT: ${telemetryList.length}`);
