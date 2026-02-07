@@ -5,163 +5,167 @@ import path from 'path';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
 
+/* ---------------- SETUP ---------------- */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-
-/* ✅ REQUIRED: Render dynamic port */
 const PORT = process.env.PORT || 5000;
-
-/* ✅ REQUIRED: absolute DB path */
 const DB_FILE = path.join(__dirname, 'fleet_db.json');
 
 const TOR_BASE_URL = 'https://torapis.tor-iot.com';
-
-/* ✅ REQUIRED: env variables (set in Render dashboard) */
 const TOR_USER = process.env.TOR_USER;
 const TOR_PASS = process.env.TOR_PASS;
 
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '100mb' }));
 
+/* ---------------- STORES ---------------- */
 let vehicleStore = {};
-let customerStore = {};
-let dealerStore = {};
-let alertStore = {};
 let userStore = {
   admin: {
     username: 'admin',
-    emailId: 'admin@osme.com',
     password: 'Osme@2025',
     role: 'Admin',
-    status: 'Active',
     isActive: true
   }
 };
 
-const syncJobs = {};
-
-/* ---------------- DB LOAD ---------------- */
+/* ---------------- DB ---------------- */
 const loadDatabase = () => {
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const data = fs.readFileSync(DB_FILE, 'utf8');
-      const parsed = JSON.parse(data);
-      vehicleStore = parsed.vehicles || {};
-      customerStore = parsed.customers || {};
-      dealerStore = parsed.dealers || {};
-      alertStore = parsed.alerts || {};
-      if (parsed.users) userStore = { ...userStore, ...parsed.users };
-    }
-  } catch (err) {
-    console.error('[DB LOAD ERROR]', err.message);
+  if (fs.existsSync(DB_FILE)) {
+    const data = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    vehicleStore = data.vehicles || {};
+    userStore = { ...userStore, ...(data.users || {}) };
   }
+};
+
+const persistData = () => {
+  fs.writeFileSync(
+    DB_FILE,
+    JSON.stringify({ vehicles: vehicleStore, users: userStore }, null, 2)
+  );
 };
 
 loadDatabase();
 
-/* ---------------- DB SAVE ---------------- */
-const persistData = () => {
+/* ---------------- TOR AUTH ---------------- */
+let authToken = null;
+
+const getTorToken = async () => {
   try {
-    fs.writeFileSync(
-      DB_FILE,
-      JSON.stringify(
-        {
-          vehicles: vehicleStore,
-          customers: customerStore,
-          dealers: dealerStore,
-          users: userStore,
-          alerts: alertStore
-        },
-        null,
-        2
-      )
-    );
-  } catch (err) {
-    console.error('[DB SAVE ERROR]', err.message);
+    const res = await axios.post(`${TOR_BASE_URL}/Auth/login`, {
+      username: TOR_USER,
+      password: TOR_PASS
+    });
+    authToken =
+      res.data?.token || res.data?.data?.token || res.data?.result?.token;
+    return authToken;
+  } catch {
+    authToken = null;
+    return null;
   }
 };
 
-/* ---------------- TOR AUTH ---------------- */
-async function getTorToken() {
-  try {
-    const res = await axios.post(
-      `${TOR_BASE_URL}/Auth/login`,
-      { username: TOR_USER, password: TOR_PASS },
-      { timeout: 10000 }
-    );
-    return res.data?.token || res.data?.data?.token || res.data?.result?.token;
-  } catch (e) {
-    console.error('[TOR AUTH FAILED]');
-    return null;
+/* ---------------- HELPERS ---------------- */
+const getVal = (obj, keys, fallback = null) => {
+  for (const k of keys) {
+    if (obj?.[k] !== undefined && obj?.[k] !== null) return obj[k];
   }
-}
+  return fallback;
+};
 
-/* ================= VEHICLES ================= */
+const fetchAllPages = async (endpoint, payload) => {
+  let all = [];
+  let pageNo = 1;
+  const pageSize = 1000;
 
+  while (true) {
+    const res = await axios.post(
+      `${TOR_BASE_URL}${endpoint}`,
+      { ...payload, pageNo, pageSize },
+      { headers: { Authorization: `Bearer ${authToken}` }, timeout: 60000 }
+    );
+
+    const list = res.data?.data || res.data?.result || [];
+    if (!Array.isArray(list) || list.length === 0) break;
+
+    all.push(...list);
+    if (list.length < pageSize) break;
+    pageNo++;
+  }
+  return all;
+};
+
+/* ---------------- TOR → VEHICLE SYNC ---------------- */
+const syncFleetFromTOR = async () => {
+  try {
+    if (!authToken && !(await getTorToken())) return;
+
+    console.log('🔄 TOR sync started');
+
+    const metaList = await fetchAllPages(
+      '/EquipDetails/GetVehicleDetails',
+      { hardwareId: '', equipmentCode: '' }
+    );
+
+    const metaMap = new Map();
+    metaList.forEach(m => {
+      const hwid = String(getVal(m, ['HWID', 'hardwareId'], '')).trim();
+      if (hwid) metaMap.set(hwid, m);
+    });
+
+    const telemetry = await fetchAllPages(
+      '/MachineData/GetLatestMachineData',
+      { hardwareId: '', equipmentCode: '' }
+    );
+
+    telemetry.forEach(v => {
+      const hwid = String(getVal(v, ['HWID', 'hardwareId'], '')).trim();
+      if (!hwid) return;
+
+      const meta = metaMap.get(hwid) || {};
+      const existing = vehicleStore[hwid] || { history: [] };
+
+      vehicleStore[hwid] = {
+        ...existing,
+        id: hwid,
+        displayDeviceId: getVal(meta, ['equipmentCode'], hwid),
+        registrationNo: getVal(meta, ['vehicleRegNo'], '---'),
+        chassisNumber: getVal(meta, ['vehicleChassisNo'], '---'),
+        status: getVal(v, ['MachineStatus'], 'Off'),
+        location: {
+          lat: parseFloat(getVal(v, ['Latitude'], 0)),
+          lng: parseFloat(getVal(v, ['Longitude'], 0))
+        },
+        metrics: {
+          batteryLevel: parseFloat(getVal(v, ['StateofCharge'], 0)),
+          speed: parseFloat(getVal(v, ['Speed'], 0)),
+          ignition: String(getVal(v, ['KeyOnSignal'])) === '1',
+          totalKm: parseFloat(getVal(v, ['Odometer'], 0)),
+          voltage: parseFloat(getVal(v, ['BatteryVoltage'], 0))
+        },
+        rawTor: v,
+        lastUpdate: new Date().toISOString()
+      };
+    });
+
+    persistData();
+    console.log(`✅ TOR sync complete (${Object.keys(vehicleStore).length} vehicles)`);
+  } catch (err) {
+    console.error('❌ TOR sync error:', err.message);
+    authToken = null;
+  }
+};
+
+/* ⏱ Run every 30 seconds */
+setInterval(syncFleetFromTOR, 30000);
+syncFleetFromTOR();
+
+/* ---------------- API ---------------- */
 app.get('/api/vehicles', (req, res) => {
-  res.json(
-    Object.values(vehicleStore).map(({ history, alerts, ...rest }) => rest)
-  );
+  res.json(Object.values(vehicleStore));
 });
-
-app.put('/api/vehicles/:id', (req, res) => {
-  const { id } = req.params;
-  const existing = vehicleStore[id] || { history: [], alerts: [] };
-
-  vehicleStore[id] = { ...existing, ...req.body, id };
-  persistData();
-
-  res.json({ success: true });
-});
-
-app.get('/api/telemetry/:id', (req, res) => {
-  const vehicle = vehicleStore[req.params.id];
-  if (vehicle) res.json(vehicle);
-  else res.status(404).json({ error: 'Vehicle not found' });
-});
-
-app.post('/api/telemetry/bulk', (req, res) => {
-  const batch = req.body;
-  if (!Array.isArray(batch)) return res.status(400).end();
-
-  batch.forEach(node => {
-    if (!node.id) return;
-
-    const existing = vehicleStore[node.id] || { history: [], alerts: [] };
-    const history = existing.history || [];
-
-    const entryDate =
-      node.rawTor?.ENTRYDATE || node.rawTor?.DeviceDate;
-
-    if (
-      entryDate &&
-      !history.some(
-        h =>
-          (h.rawTor?.ENTRYDATE || h.rawTor?.DeviceDate) === entryDate
-      )
-    ) {
-      history.unshift({
-        timestamp: entryDate,
-        rawTor: node.rawTor,
-        metrics: node.metrics
-      });
-      if (history.length > 5000) history.pop();
-    }
-
-    vehicleStore[node.id] = {
-      ...existing,
-      ...node,
-      history
-    };
-  });
-
-  persistData();
-  res.json({ success: true });
-});
-
-/* ================= USERS ================= */
 
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
@@ -173,9 +177,7 @@ app.post('/api/login', (req, res) => {
   }
 });
 
-/* ================= START ================= */
-
-/* ✅ REQUIRED FOR RENDER */
+/* ---------------- START ---------------- */
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 OSME Backend running on port ${PORT}`);
+  console.log(`🚀 Backend running on ${PORT}`);
 });
