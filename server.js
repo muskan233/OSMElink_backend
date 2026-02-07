@@ -52,24 +52,30 @@ const getVal = (obj, keys, fallback = null) => {
   return fallback;
 };
 
+// Fetch all pages from TOR API with pagination
 const fetchAllPages = async (endpoint, payload) => {
   let all = [];
   let pageNo = 1;
   const pageSize = 1000;
 
   while (true) {
-    const res = await axios.post(
-      `${TOR_BASE_URL}${endpoint}`,
-      { ...payload, pageNo, pageSize },
-      { headers: { Authorization: `Bearer ${authToken}` }, timeout: 60000 }
-    );
+    try {
+      const res = await axios.post(
+        `${TOR_BASE_URL}${endpoint}`,
+        { ...payload, pageNo, pageSize },
+        { headers: { Authorization: `Bearer ${authToken}` }, timeout: 60000 }
+      );
 
-    const list = res.data?.data || res.data?.result || [];
-    if (!Array.isArray(list) || list.length === 0) break;
+      const list = res.data?.data || res.data?.result || [];
+      if (!Array.isArray(list) || list.length === 0) break;
 
-    all.push(...list);
-    if (list.length < pageSize) break;
-    pageNo++;
+      all.push(...list);
+      if (list.length < pageSize) break;
+      pageNo++;
+    } catch (e) {
+      console.error(`❌ Error fetching ${endpoint}:`, e.message);
+      break;
+    }
   }
 
   return all;
@@ -85,6 +91,7 @@ const getTorToken = async () => {
     );
 
     authToken = res.data?.token || res.data?.data?.token || res.data?.result?.token;
+    console.log('🔑 TOR token acquired');
     return authToken;
   } catch (e) {
     console.error('❌ TOR auth failed:', e.message);
@@ -96,11 +103,12 @@ const getTorToken = async () => {
 /* ---------------- TOR → VEHICLE SYNC ---------------- */
 const syncFleetFromTOR = async () => {
   try {
+    // Refresh token if expired
     if (!authToken && !(await getTorToken())) return;
 
     console.log('🔄 TOR sync started');
 
-    // ⚡ FIX: send empty object instead of empty strings
+    // Send empty object payload instead of empty strings
     const metaList = await fetchAllPages('/EquipDetails/GetVehicleDetails', {});
     const telemetryList = await fetchAllPages('/MachineData/GetLatestMachineData', {});
 
@@ -164,11 +172,13 @@ const syncFleetFromTOR = async () => {
 
   } catch (err) {
     console.error('❌ TOR sync error:', err.message);
+    // Force token refresh next time
     authToken = null;
   }
 };
 
-setInterval(syncFleetFromTOR, 30000); // every 30 sec
+// Start sync every 30 sec
+setInterval(syncFleetFromTOR, 30000);
 syncFleetFromTOR();
 
 /* ---------------- FORWARDER INGEST ---------------- */
@@ -248,11 +258,8 @@ app.post('/api/login', async (req, res) => {
 /* ---------------- TEST TOR AUTH ---------------- */
 app.get('/test-tor-auth', async (req, res) => {
   try {
-    const response = await axios.post(
-      'https://torapis.tor-iot.com/Auth/login',
-      { username: TOR_USER, password: TOR_PASS }
-    );
-    res.json({ success: true, data: response.data });
+    const token = await getTorToken();
+    res.json({ success: !!token, token });
   } catch (err) {
     res.json({ success: false, error: err.message });
   }
@@ -261,6 +268,8 @@ app.get('/test-tor-auth', async (req, res) => {
 /* ---------------- DEBUG ROUTE TO CHECK DATA ---------------- */
 app.get('/debug-tor', async (req, res) => {
   try {
+    if (!authToken && !(await getTorToken())) return res.status(500).json({ error: 'TOR token missing' });
+
     const meta = await axios.post(
       `${TOR_BASE_URL}/EquipDetails/GetVehicleDetails`,
       {},
