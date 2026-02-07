@@ -5,12 +5,14 @@ import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import favicon from 'serve-favicon';
 
 dotenv.config();
 
 /* ---------------- SETUP ---------------- */
 const app = express();
 const PORT = process.env.PORT || 5000;
+
 // CORS setup
 app.use(cors({
   origin: [
@@ -22,10 +24,13 @@ app.use(cors({
 
 app.use(express.json({ limit: '100mb' }));
 
-// Serve static files (fix 404 for favicon, etc.)
+// Serve static files
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Favicon middleware to avoid 404 warnings
+app.use(favicon(path.join(__dirname, 'public', 'favicon.ico')));
 
 /* ---------------- MYSQL CONNECTION ---------------- */
 const db = await mysql.createPool({
@@ -52,7 +57,7 @@ const getVal = (obj, keys, fallback = null) => {
 };
 
 // Fetch all pages from TOR API with pagination
-const fetchAllPages = async (endpoint, payload) => {
+const fetchAllPages = async (endpoint, payload = {}) => {
   let all = [];
   let pageNo = 1;
   const pageSize = 1000;
@@ -65,8 +70,15 @@ const fetchAllPages = async (endpoint, payload) => {
         { headers: { Authorization: `Bearer ${authToken}` }, timeout: 60000 }
       );
 
-      const list = res.data?.data || res.data?.result || [];
-      if (!Array.isArray(list) || list.length === 0) break;
+      const list = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.data)
+        ? res.data.data
+        : Array.isArray(res.data?.result)
+        ? res.data.result
+        : [];
+
+      if (!list.length) break;
 
       all.push(...list);
       if (list.length < pageSize) break;
@@ -102,7 +114,6 @@ const getTorToken = async () => {
 /* ---------------- TOR → VEHICLE SYNC ---------------- */
 const syncFleetFromTOR = async () => {
   try {
-    // Ensure valid token
     if (!authToken && !(await getTorToken())) {
       console.error('❌ TOR token missing, cannot sync fleet');
       return;
@@ -110,24 +121,20 @@ const syncFleetFromTOR = async () => {
 
     console.log('🔄 TOR sync started');
 
-    // Payload to fetch all vehicles
     const payload = { hardwareId: "", equipmentCode: "" };
 
-    // Fetch vehicle meta and telemetry
     const metaList = await fetchAllPages('/EquipDetails/GetVehicleDetails', payload);
     const telemetryList = await fetchAllPages('/MachineData/GetLatestMachineData', payload);
 
     console.log(`META COUNT: ${metaList.length}`);
     console.log(`TELEMETRY COUNT: ${telemetryList.length}`);
 
-    // Map hardwareId → meta for easy lookup
     const metaMap = new Map();
     metaList.forEach(m => {
       const hwid = String(getVal(m, ['HWID', 'hardwareId'], '')).trim();
       if (hwid) metaMap.set(hwid, m);
     });
 
-    // Insert/update telemetry into MySQL
     for (const v of telemetryList) {
       const hwid = String(getVal(v, ['HWID', 'hardwareId'], '')).trim();
       if (!hwid) continue;
@@ -183,16 +190,13 @@ const syncFleetFromTOR = async () => {
 
   } catch (err) {
     console.error('❌ TOR sync error:', err.message);
-
-    // Clear token so next sync refreshes it
-    authToken = null;
+    authToken = null; // refresh token next time
   }
 };
 
-// Start sync every 30 sec
+// Sync every 30 sec
 setInterval(syncFleetFromTOR, 30000);
 syncFleetFromTOR();
-
 
 /* ---------------- FORWARDER INGEST ---------------- */
 app.post('/api/telemetry/bulk', async (req, res) => {
@@ -223,7 +227,7 @@ app.post('/api/telemetry/bulk', async (req, res) => {
           v.vehicleId,
           v.displayDeviceId || v.vehicleId,
           v.registrationNo || '---',
-          v.status || 'Off',
+          v.status || 'Unknown',
           v.location?.lat || 0,
           v.location?.lng || 0,
           v.metrics?.speed || 0,
@@ -278,20 +282,20 @@ app.get('/test-tor-auth', async (req, res) => {
   }
 });
 
-/* ---------------- DEBUG ROUTE TO CHECK DATA ---------------- */
+/* ---------------- DEBUG ROUTE ---------------- */
 app.get('/debug-tor', async (req, res) => {
   if (!authToken && !(await getTorToken())) return res.status(500).json({ error: 'TOR token missing' });
 
   try {
     const meta = await axios.post(
       `${TOR_BASE_URL}/EquipDetails/GetVehicleDetails`,
-      {}, // send empty object instead of empty strings
+      {},
       { headers: { Authorization: `Bearer ${authToken}` } }
     );
 
     const telemetry = await axios.post(
       `${TOR_BASE_URL}/MachineData/GetLatestMachineData`,
-      {}, // send empty object
+      {},
       { headers: { Authorization: `Bearer ${authToken}` } }
     );
 
@@ -304,8 +308,7 @@ app.get('/debug-tor', async (req, res) => {
   }
 });
 
-
-/* ---------------- START ---------------- */
+/* ---------------- START SERVER ---------------- */
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Backend running on ${PORT}`);
 });
