@@ -156,6 +156,9 @@ const syncFleetFromTOR = async () => {
     console.error('❌ TOR sync error:', err.message);
     authToken = null;
   }
+  console.log('META COUNT:', metaList.length);
+  console.log('TELEMETRY COUNT:', telemetry.length);
+
 };
 
 /* ⏱ Run every 30 seconds */
