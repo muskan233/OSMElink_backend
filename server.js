@@ -20,10 +20,14 @@ const TOR_PASS = process.env.TOR_PASS;
 
 app.use(cors({
   origin: [
-    'http://localhost:5173',   // local dev
-    'https://osmelink-frontend.onrender.com' // production frontend
-  ]
+    'http://localhost:5173',
+    'https://osmelink-frontend.onrender.com',
+    'https://blue-seal-873817.hostingersite.com' // new frontend
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true
 }));
+
 app.use(express.json({ limit: '100mb' }));
 
 /* ---------------- STORES ---------------- */
