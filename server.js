@@ -62,19 +62,16 @@ let authToken = null;
 
 const getTorToken = async () => {
   try {
-    const res = await axios.post(`${TOR_BASE_URL}/Auth/login`, {
-      username: TOR_USER,
-      password: TOR_PASS
-    }, { timeout: 15000 });
+    const res = await axios.post(
+      `${TOR_BASE_URL}/Auth/login`,
+      { username: TOR_USER, password: TOR_PASS },
+      { timeout: 15000 }
+    );
 
     authToken =
       res.data?.token ||
       res.data?.data?.token ||
       res.data?.result?.token;
-
-    if (!authToken) {
-      console.error('❌ TOR auth succeeded but token missing');
-    }
 
     return authToken;
   } catch (e) {
@@ -101,21 +98,13 @@ const fetchAllPages = async (endpoint, payload) => {
     const res = await axios.post(
       `${TOR_BASE_URL}${endpoint}`,
       { ...payload, pageNo, pageSize },
-      {
-        headers: { Authorization: `Bearer ${authToken}` },
-        timeout: 60000
-      }
+      { headers: { Authorization: `Bearer ${authToken}` }, timeout: 60000 }
     );
 
-    const list =
-      res.data?.data ||
-      res.data?.result ||
-      [];
-
+    const list = res.data?.data || res.data?.result || [];
     if (!Array.isArray(list) || list.length === 0) break;
 
     all.push(...list);
-
     if (list.length < pageSize) break;
     pageNo++;
   }
@@ -123,13 +112,10 @@ const fetchAllPages = async (endpoint, payload) => {
   return all;
 };
 
-/* ---------------- TOR → VEHICLE SYNC ---------------- */
+/* ---------------- TOR → VEHICLE SYNC (PULL) ---------------- */
 const syncFleetFromTOR = async () => {
   try {
-    if (!authToken && !(await getTorToken())) {
-      console.warn('⚠️ TOR token unavailable, skipping sync');
-      return;
-    }
+    if (!authToken && !(await getTorToken())) return;
 
     console.log('🔄 TOR sync started');
 
@@ -146,11 +132,6 @@ const syncFleetFromTOR = async () => {
     console.log(`META COUNT: ${metaList.length}`);
     console.log(`TELEMETRY COUNT: ${telemetryList.length}`);
 
-    if (metaList.length === 0 && telemetryList.length === 0) {
-      console.warn('⚠️ TOR returned no data (possible IP restriction)');
-      return;
-    }
-
     const metaMap = new Map();
     metaList.forEach(m => {
       const hwid = String(getVal(m, ['HWID', 'hardwareId'], '')).trim();
@@ -162,27 +143,23 @@ const syncFleetFromTOR = async () => {
       if (!hwid) return;
 
       const meta = metaMap.get(hwid) || {};
-      const existing = vehicleStore[hwid] || { history: [] };
+      const existing = vehicleStore[hwid] || {};
 
       vehicleStore[hwid] = {
         ...existing,
-        id: hwid,
+        vehicleId: hwid,
         displayDeviceId: getVal(meta, ['equipmentCode'], hwid),
         registrationNo: getVal(meta, ['vehicleRegNo'], '---'),
-        chassisNumber: getVal(meta, ['vehicleChassisNo'], '---'),
         status: getVal(v, ['MachineStatus'], 'Off'),
         location: {
-          lat: parseFloat(getVal(v, ['Latitude'], 0)),
-          lng: parseFloat(getVal(v, ['Longitude'], 0))
+          lat: Number(getVal(v, ['Latitude'], 0)),
+          lng: Number(getVal(v, ['Longitude'], 0))
         },
         metrics: {
-          batteryLevel: parseFloat(getVal(v, ['StateofCharge'], 0)),
-          speed: parseFloat(getVal(v, ['Speed'], 0)),
-          ignition: String(getVal(v, ['KeyOnSignal'])) === '1',
-          totalKm: parseFloat(getVal(v, ['Odometer'], 0)),
-          voltage: parseFloat(getVal(v, ['BatteryVoltage'], 0))
+          speed: Number(getVal(v, ['Speed'], 0)),
+          battery: Number(getVal(v, ['StateofCharge'], 0)),
+          odometer: Number(getVal(v, ['Odometer'], 0))
         },
-        rawTor: v,
         lastUpdate: new Date().toISOString()
       };
     });
@@ -195,9 +172,41 @@ const syncFleetFromTOR = async () => {
   }
 };
 
-/* ⏱ Run every 30 seconds */
 setInterval(syncFleetFromTOR, 30000);
 syncFleetFromTOR();
+
+/* ---------------- 🔥 FORWARDER INGEST (PUSH) ---------------- */
+app.post('/api/telemetry/bulk', (req, res) => {
+  try {
+    const list = req.body;
+
+    if (!Array.isArray(list)) {
+      return res.status(400).json({ error: 'Payload must be array' });
+    }
+
+    console.log(`📥 Forwarder received ${list.length} vehicles`);
+
+    list.forEach(v => {
+      if (!v.vehicleId) return;
+
+      vehicleStore[v.vehicleId] = {
+        ...vehicleStore[v.vehicleId],
+        ...v,
+        lastUpdate: new Date().toISOString()
+      };
+    });
+
+    persistData();
+
+    res.json({
+      success: true,
+      vehicles: Object.keys(vehicleStore).length
+    });
+  } catch (e) {
+    console.error('❌ Bulk ingest failed:', e.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 /* ---------------- API ---------------- */
 app.get('/api/vehicles', (req, res) => {
@@ -207,7 +216,7 @@ app.get('/api/vehicles', (req, res) => {
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   const user = userStore[username];
-  if (user && String(user.password) === String(password)) {
+  if (user && user.password === password) {
     res.json({ success: true, user });
   } else {
     res.status(401).json({ success: false });
