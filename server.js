@@ -13,19 +13,19 @@ const PORT = process.env.PORT || 5000;
 // CORS setup
 app.use(cors({
   origin: [
-    'http://localhost:5173',              // local dev
-    'https://osmelink-frontend.onrender.com', // production frontend
-    'https://blue-seal-873817.hostingersite.com'
+    'http://localhost:5173',                    // local dev
+    'https://osmelink-frontend.onrender.com',  // production frontend
+    'https://blue-seal-873817.hostingersite.com' // Hostinger frontend
   ]
 }));
 app.use(express.json({ limit: '100mb' }));
 
 /* ---------------- MYSQL CONNECTION ---------------- */
 const db = await mysql.createPool({
-  host: process.env.srv2197.hstgr.io,     // e.g., srv2197.hstgr.io
-  user: process.env.OSMElink,     // your MySQL user
-  password: process.env.RO@1234_hIt, // your MySQL password
-  database: process.env.OSMElink, // your database name
+  host: process.env.DB_HOST,       // e.g., srv2197.hstgr.io
+  user: process.env.DB_USER,       // MySQL username
+  password: process.env.DB_PASS,   // MySQL password
+  database: process.env.DB_NAME,   // Database name
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
@@ -92,7 +92,6 @@ const syncFleetFromTOR = async () => {
 
     console.log('🔄 TOR sync started');
 
-    // Fetch metadata
     const metaList = await fetchAllPages('/EquipDetails/GetVehicleDetails', { hardwareId: '', equipmentCode: '' });
     const telemetryList = await fetchAllPages('/MachineData/GetLatestMachineData', { hardwareId: '', equipmentCode: '' });
 
@@ -110,7 +109,6 @@ const syncFleetFromTOR = async () => {
       if (!hwid) continue;
 
       const meta = metaMap.get(hwid) || {};
-
       const vehicleData = {
         vehicleId: hwid,
         displayDeviceId: getVal(meta, ['equipmentCode'], hwid),
@@ -164,7 +162,7 @@ const syncFleetFromTOR = async () => {
 setInterval(syncFleetFromTOR, 30000); // every 30 sec
 syncFleetFromTOR();
 
-/* ---------------- FORWARDER INGEST (PUSH) ---------------- */
+/* ---------------- FORWARDER INGEST ---------------- */
 app.post('/api/telemetry/bulk', async (req, res) => {
   try {
     const list = req.body;
