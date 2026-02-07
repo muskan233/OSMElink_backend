@@ -3,6 +3,8 @@ import cors from 'cors';
 import axios from 'axios';
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
@@ -13,19 +15,25 @@ const PORT = process.env.PORT || 5000;
 // CORS setup
 app.use(cors({
   origin: [
-    'http://localhost:5173',                    // local dev
-    'https://osmelink-frontend.onrender.com',  // production frontend
-    'https://blue-seal-873817.hostingersite.com' // Hostinger frontend
+    'http://localhost:5173',
+    'https://osmelink-frontend.onrender.com',
+    'https://blue-seal-873817.hostingersite.com'
   ]
 }));
+
 app.use(express.json({ limit: '100mb' }));
+
+// Serve static files (fix 404 for favicon, etc.)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+app.use(express.static(path.join(__dirname, 'public')));
 
 /* ---------------- MYSQL CONNECTION ---------------- */
 const db = await mysql.createPool({
-  host: process.env.DB_HOST,       // e.g., srv2197.hstgr.io
-  user: process.env.DB_USER,       // MySQL username
-  password: process.env.DB_PASS,   // MySQL password
-  database: process.env.DB_NAME,   // Database name
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
@@ -92,8 +100,9 @@ const syncFleetFromTOR = async () => {
 
     console.log('🔄 TOR sync started');
 
-    const metaList = await fetchAllPages('/EquipDetails/GetVehicleDetails', { hardwareId: '', equipmentCode: '' });
-    const telemetryList = await fetchAllPages('/MachineData/GetLatestMachineData', { hardwareId: '', equipmentCode: '' });
+    // ⚡ FIX: send empty object instead of empty strings
+    const metaList = await fetchAllPages('/EquipDetails/GetVehicleDetails', {});
+    const telemetryList = await fetchAllPages('/MachineData/GetLatestMachineData', {});
 
     console.log(`META COUNT: ${metaList.length}`);
     console.log(`TELEMETRY COUNT: ${telemetryList.length}`);
@@ -241,11 +250,37 @@ app.get('/test-tor-auth', async (req, res) => {
   try {
     const response = await axios.post(
       'https://torapis.tor-iot.com/Auth/login',
-      { username: process.env.TOR_USER, password: process.env.TOR_PASS }
+      { username: TOR_USER, password: TOR_PASS }
     );
     res.json({ success: true, data: response.data });
   } catch (err) {
     res.json({ success: false, error: err.message });
+  }
+});
+
+/* ---------------- DEBUG ROUTE TO CHECK DATA ---------------- */
+app.get('/debug-tor', async (req, res) => {
+  try {
+    const meta = await axios.post(
+      `${TOR_BASE_URL}/EquipDetails/GetVehicleDetails`,
+      {},
+      { headers: { Authorization: `Bearer ${authToken}` } }
+    );
+
+    const telemetry = await axios.post(
+      `${TOR_BASE_URL}/MachineData/GetLatestMachineData`,
+      {},
+      { headers: { Authorization: `Bearer ${authToken}` } }
+    );
+
+    res.json({
+      metaCount: meta.data?.length || 0,
+      telemetryCount: telemetry.data?.length || 0,
+      metaSample: meta.data?.[0] || null,
+      telemetrySample: telemetry.data?.[0] || null
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
