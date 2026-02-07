@@ -236,6 +236,19 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+/* ---------------- TEST TOR AUTH ---------------- */
+app.get('/test-tor-auth', async (req, res) => {
+  try {
+    const response = await axios.post(
+      'https://torapis.tor-iot.com/Auth/login',
+      { username: process.env.TOR_USER, password: process.env.TOR_PASS }
+    );
+    res.json({ success: true, data: response.data });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
 /* ---------------- START ---------------- */
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Backend running on ${PORT}`);
