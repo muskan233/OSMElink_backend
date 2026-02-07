@@ -280,31 +280,30 @@ app.get('/test-tor-auth', async (req, res) => {
 
 /* ---------------- DEBUG ROUTE TO CHECK DATA ---------------- */
 app.get('/debug-tor', async (req, res) => {
-  try {
-    if (!authToken && !(await getTorToken())) return res.status(500).json({ error: 'TOR token missing' });
+  if (!authToken && !(await getTorToken())) return res.status(500).json({ error: 'TOR token missing' });
 
+  try {
     const meta = await axios.post(
       `${TOR_BASE_URL}/EquipDetails/GetVehicleDetails`,
-      {},
+      {}, // send empty object instead of empty strings
       { headers: { Authorization: `Bearer ${authToken}` } }
     );
 
     const telemetry = await axios.post(
       `${TOR_BASE_URL}/MachineData/GetLatestMachineData`,
-      {},
+      {}, // send empty object
       { headers: { Authorization: `Bearer ${authToken}` } }
     );
 
     res.json({
-      metaCount: meta.data?.length || 0,
-      telemetryCount: telemetry.data?.length || 0,
-      metaSample: meta.data?.[0] || null,
-      telemetrySample: telemetry.data?.[0] || null
+      metaRaw: meta.data,
+      telemetryRaw: telemetry.data
     });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
+
 
 /* ---------------- START ---------------- */
 app.listen(PORT, '0.0.0.0', () => {
