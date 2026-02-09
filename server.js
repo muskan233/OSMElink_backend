@@ -258,7 +258,6 @@ app.post('/api/telemetry/bulk', async (req, res) => {
 });
 
 /* ---------------- API ---------------- */
-/* ---------------- API ---------------- */
 app.get('/api/vehicles', async (req, res) => {
   try {
     const [rows] = await db.query(`
@@ -277,26 +276,31 @@ app.get('/api/vehicles', async (req, res) => {
     `);
 
     const formatted = rows.map(v => ({
-      id: v.vehicleId,
-      vehicleId: v.vehicleId,
+  id: v.vehicleId,
+  vehicleId: v.vehicleId,
 
-      displayDeviceId: v.displayDeviceId,
-      registrationNo: v.registrationNo,
-      status: v.status,
+  displayDeviceId: v.displayDeviceId,
+  registrationNo: v.registrationNo,
+  status: v.status,
 
-      location: {
-        lat: Number(v.lat) || 0,
-        lng: Number(v.lng) || 0
-      },
+  equipmentConfig: {
+    active: v.status !== 'Offline',
+  },
 
-      metrics: {
-        speed: Number(v.speed) || 0,
-        batteryLevel: Number(v.battery) || 0,
-        totalKm: Number(v.odometer) || 0
-      },
+  location: {
+    lat: Number(v.lat) || 0,
+    lng: Number(v.lng) || 0
+  },
 
-      lastUpdate: v.lastUpdate
-    }));
+  metrics: {
+    speed: Number(v.speed) || 0,
+    batteryLevel: Number(v.battery) || 0,
+    totalKm: Number(v.odometer) || 0
+  },
+
+  lastUpdate: v.lastUpdate
+}));
+
 
     res.json(formatted);
   } catch (e) {
