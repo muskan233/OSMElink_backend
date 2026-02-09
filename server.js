@@ -106,6 +106,25 @@ const getTorToken = async () => {
   }
 };
 
+const deriveVehicleStatus = (v) => {
+  const deviceTime = new Date(v.DeviceDate);
+  if (isNaN(deviceTime.getTime())) return 'Offline';
+
+  const diffMin = (Date.now() - deviceTime.getTime()) / 60000;
+
+  if (diffMin > 15) return 'Offline';
+
+  if (v.isCharging === true || Number(v.BatteryChargingIndication1) > 0)
+    return 'Charging';
+
+  if (Number(v.Speed) > 0) return 'Running';
+
+  if (v.KeyOnSignal === '1') return 'Idle';
+
+  return 'Off';
+};
+
+
 /* ---------------- TOR → VEHICLE SYNC ---------------- */
 const syncFleetFromTOR = async () => {
   try {
@@ -138,13 +157,13 @@ const syncFleetFromTOR = async () => {
         vehicleId: hwid,
         displayDeviceId: getVal(meta, ['equipmentCode'], hwid),
         registrationNo: getVal(meta, ['vehicleRegNo'], '---'),
-        status: getVal(v, ['MachineStatus'], 'Unknown'),
+        status: deriveVehicleStatus(v),
         lat: Number(getVal(v, ['Latitude'], 0)),
         lng: Number(getVal(v, ['Longitude'], 0)),
         speed: Number(getVal(v, ['Speed'], 0)),
         battery: Number(getVal(v, ['StateofCharge'], 0)),
         odometer: Number(getVal(v, ['Odometer'], 0)),
-        lastUpdate: new Date()
+        lastUpdate: new Date(v.DeviceDate || Date.now())
       };
 
       try {
@@ -239,14 +258,53 @@ app.post('/api/telemetry/bulk', async (req, res) => {
 });
 
 /* ---------------- API ---------------- */
+/* ---------------- API ---------------- */
 app.get('/api/vehicles', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM vehicles');
-    res.json(rows);
+    const [rows] = await db.query(`
+      SELECT 
+        vehicleId,
+        displayDeviceId,
+        registrationNo,
+        status,
+        lat,
+        lng,
+        speed,
+        battery,
+        odometer,
+        lastUpdate
+      FROM vehicles
+    `);
+
+    const formatted = rows.map(v => ({
+      id: v.vehicleId,
+      vehicleId: v.vehicleId,
+
+      displayDeviceId: v.displayDeviceId,
+      registrationNo: v.registrationNo,
+      status: v.status,
+
+      location: {
+        lat: Number(v.lat) || 0,
+        lng: Number(v.lng) || 0
+      },
+
+      metrics: {
+        speed: Number(v.speed) || 0,
+        batteryLevel: Number(v.battery) || 0,
+        totalKm: Number(v.odometer) || 0
+      },
+
+      lastUpdate: v.lastUpdate
+    }));
+
+    res.json(formatted);
   } catch (e) {
+    console.error('❌ /api/vehicles error:', e.message);
     res.status(500).json({ error: 'Database query failed' });
   }
 });
+
 
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
