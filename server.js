@@ -325,6 +325,128 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+/* ---------------- CUSTOMERS API ---------------- */
+
+// GET all customers
+app.get('/api/customers', async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        id,
+        customerName,
+        phoneNo,
+        emailId,
+        address,
+        city,
+        state,
+        isUser,
+        username
+      FROM customers
+      ORDER BY customerName
+    `);
+
+    res.json(rows);
+  } catch (e) {
+    console.error('❌ /api/customers error:', e.message);
+    res.status(500).json({ error: 'Failed to fetch customers' });
+  }
+});
+
+// CREATE or UPDATE customer
+app.post('/api/customers', async (req, res) => {
+  try {
+    const {
+      id,
+      customerName,
+      phoneNo,
+      emailId,
+      address,
+      city,
+      state,
+      isUser,
+      username,
+      password,
+      role
+    } = req.body;
+
+    if (!customerName || !phoneNo) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    if (id) {
+      // UPDATE
+      await db.execute(
+        `UPDATE customers SET
+          customerName=?,
+          phoneNo=?,
+          emailId=?,
+          address=?,
+          city=?,
+          state=?,
+          isUser=?,
+          username=?,
+          password=COALESCE(?, password),
+          role=?
+        WHERE id=?`,
+        [
+          customerName,
+          phoneNo,
+          emailId,
+          address,
+          city,
+          state,
+          isUser ? 1 : 0,
+          username,
+          password || null,
+          role || null,
+          id
+        ]
+      );
+    } else {
+      // INSERT
+      await db.execute(
+        `INSERT INTO customers
+          (customerName, phoneNo, emailId, address, city, state, isUser, username, password, role)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          customerName,
+          phoneNo,
+          emailId,
+          address,
+          city,
+          state,
+          isUser ? 1 : 0,
+          username,
+          password || null,
+          role || null
+        ]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error('❌ /api/customers save error:', e.message);
+    res.status(500).json({ error: 'Failed to save customer' });
+  }
+});
+
+/* ---------------- DEALERS API ---------------- */
+app.get('/api/dealers', async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT id, dealerName
+      FROM dealers
+      ORDER BY dealerName
+    `);
+
+    res.json(rows);
+  } catch (e) {
+    console.error('❌ /api/dealers error:', e.message);
+    res.status(500).json({ error: 'Failed to fetch dealers' });
+  }
+});
+
+
 /* ---------------- TEST TOR AUTH ---------------- */
 app.get('/test-tor-auth', async (req, res) => {
   try {
