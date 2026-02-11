@@ -513,7 +513,7 @@ app.get('/api/report', async (req, res) => {
 
     if (from && to) {
       query += ` AND DeviceDate BETWEEN ? AND ?`;
-      params.push(new Date(from), new Date(to));
+      params.push(from,to);
     }
 
     query += ` ORDER BY DeviceDate DESC LIMIT 5000`;
