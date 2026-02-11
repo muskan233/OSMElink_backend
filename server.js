@@ -114,7 +114,13 @@ const deriveVehicleStatus = (v) => {
 
   const diffMin = (Date.now() - deviceTime.getTime()) / 60000;
 
+  // 24 hours = Non Communicating
+  if (diffMin > 1440) return 'Non-Communicating';
+
+  // 15 mins = Offline
   if (diffMin > 15) return 'Offline';
+
+  if (v.MachineStatus === 'On') return 'Online';
 
   if (v.isCharging === true || Number(v.BatteryChargingIndication1) > 0)
     return 'Charging';
@@ -165,6 +171,9 @@ const syncFleetFromTOR = async () => {
         speed: Number(getVal(v, ['Speed'], 0)),
         battery: Number(getVal(v, ['StateofCharge'], 0)),
         odometer: Number(getVal(v, ['Odometer'], 0)),
+        rssi: Number(getVal(v, ['RSSI'], 0)),
+        isCharging: v.isCharging === true,
+        immobilized: v.Immobilization_status === "1",
         lastUpdate: new Date(v.DeviceDate || Date.now())
       };
 
@@ -297,7 +306,10 @@ app.get('/api/vehicles', async (req, res) => {
   metrics: {
     speed: Number(v.speed) || 0,
     batteryLevel: Number(v.battery) || 0,
-    totalKm: Number(v.odometer) || 0
+    totalKm: Number(v.odometer) || 0,
+    rssi: Number(v.rssi) || 0,
+    isCharging: v.isCharging === 1,
+    immobilized: v.immobilized === 1
   },
 
   lastUpdate: v.lastUpdate
@@ -484,6 +496,7 @@ app.get('/debug-tor', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 /* ---------------- START ---------------- */
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Backend running on ${PORT}`);
