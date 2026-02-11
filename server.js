@@ -19,9 +19,12 @@ app.use(cors({
     'https://osmelink-frontend.onrender.com',
     'https://blue-seal-873817.hostingersite.com'
   ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
   credentials: true
 }));
+
+app.options('*', cors()); 
 
 app.use(express.json({ limit: '100mb' }));
 
