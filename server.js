@@ -484,7 +484,6 @@ app.get('/debug-tor', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 /* ---------------- START ---------------- */
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Backend running on ${PORT}`);
