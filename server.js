@@ -178,36 +178,39 @@ const syncFleetFromTOR = async () => {
       };
 
       try {
-        await db.execute(
-          `INSERT INTO vehicles
-            (vehicleId, displayDeviceId, registrationNo, status, lat, lng, speed, battery, odometer, lastUpdate)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE
-             displayDeviceId=VALUES(displayDeviceId),
-             registrationNo=VALUES(registrationNo),
-             status=VALUES(status),
-             lat=VALUES(lat),
-             lng=VALUES(lng),
-             speed=VALUES(speed),
-             battery=VALUES(battery),
-             odometer=VALUES(odometer),
-             lastUpdate=VALUES(lastUpdate)`,
-          [
-            vehicleData.vehicleId,
-            vehicleData.displayDeviceId,
-            vehicleData.registrationNo,
-            vehicleData.status,
-            vehicleData.lat,
-            vehicleData.lng,
-            vehicleData.speed,
-            vehicleData.battery,
-            vehicleData.odometer,
-            vehicleData.lastUpdate
-          ]
-        );
-      } catch (dbErr) {
-        console.error(`❌ DB insert failed for ${hwid}:`, dbErr.message);
-      }
+      await db.execute(
+      `INSERT INTO vehicle_rawdata
+      (HWID, ENTRYDATE, DeviceDate, ModelNumber, Latitude, Longitude,
+      StateofCharge, TimetoCharge, DistancetoEmpty1, KeyOnSignal,
+      BattTemp, BatteryVoltage, BatteryChargingIndication1,
+      Odometer, Speed, RSSI, MachineStatus, Immobilization_status, ControllerTemperature)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+          v.HWID,
+        v.ENTRYDATE,
+        v.DeviceDate,
+        v.ModelNumber,
+        v.Latitude,
+        v.Longitude,
+        v.StateofCharge,
+        v.TimetoCharge,
+        v.DistancetoEmpty1,
+        v.KeyOnSignal,
+        v.BattTemp,
+        v.BatteryVoltage,
+        v.BatteryChargingIndication1,
+        v.Odometer,
+        v.Speed,
+        v.RSSI,
+        v.MachineStatus,
+        v.Immobilization_status,
+        v.ControllerTemperature
+      ]
+    );
+  } catch (e) {
+    console.error("Rawdata insert failed:", e.message);
+  }
+
     }
 
     console.log(`✅ TOR sync complete (${telemetryList.length} vehicles)`);
@@ -496,6 +499,34 @@ app.get('/debug-tor', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+app.get('/api/report', async (req, res) => {
+  try {
+    const { vehicleId, from, to } = req.query;
+
+    let query = `
+      SELECT *
+      FROM vehicle_rawdata
+      WHERE HWID = ?
+    `;
+    const params = [vehicleId];
+
+    if (from && to) {
+      query += ` AND DeviceDate BETWEEN ? AND ?`;
+      params.push(new Date(from), new Date(to));
+    }
+
+    query += ` ORDER BY DeviceDate DESC LIMIT 5000`;
+
+    const [rows] = await db.query(query, params);
+    res.json(rows);
+
+  } catch (e) {
+    console.error("Report API error:", e.message);
+    res.status(500).json({ error: 'Failed to fetch report' });
+  }
+});
+
 
 /* ---------------- START ---------------- */
 app.listen(PORT, '0.0.0.0', () => {
