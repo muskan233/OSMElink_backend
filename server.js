@@ -178,35 +178,39 @@ const syncFleetFromTOR = async () => {
       };
 
       try {
+      const safe = (x) => (x === undefined ? null : x);
+
       await db.execute(
-      `INSERT INTO vehicle_rawdata
-      (HWID, ENTRYDATE, DeviceDate, ModelNumber, Latitude, Longitude,
-      StateofCharge, TimetoCharge, DistancetoEmpty1, KeyOnSignal,
-      BattTemp, BatteryVoltage, BatteryChargingIndication1,
-      Odometer, Speed, RSSI, MachineStatus, Immobilization_status, ControllerTemperature)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-          v.HWID,
-        v.ENTRYDATE,
-        v.DeviceDate,
-        v.ModelNumber,
-        v.Latitude,
-        v.Longitude,
-        v.StateofCharge,
-        v.TimetoCharge,
-        v.DistancetoEmpty1,
-        v.KeyOnSignal,
-        v.BattTemp,
-        v.BatteryVoltage,
-        v.BatteryChargingIndication1,
-        v.Odometer,
-        v.Speed,
-        v.RSSI,
-        v.MachineStatus,
-        v.Immobilization_status,
-        v.ControllerTemperature
-      ]
-    );
+        `INSERT INTO vehicle_rawdata
+        (HWID, ENTRYDATE, DeviceDate, ModelNumber, Latitude, Longitude,
+        StateofCharge, TimetoCharge, DistancetoEmpty1, KeyOnSignal,
+        BattTemp, BatteryVoltage, BatteryChargingIndication1,
+        Odometer, Speed, RSSI, MachineStatus, Immobilization_status, ControllerTemperature)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+            safe(v.HWID),
+            safe(v.ENTRYDATE),
+            safe(v.DeviceDate),
+            safe(v.ModelNumber),
+            safe(v.Latitude),
+            safe(v.Longitude),
+            safe(v.StateofCharge),
+            safe(v.TimetoCharge),
+            safe(v.DistancetoEmpty1),
+            safe(v.KeyOnSignal),
+            safe(v.BattTemp),
+            safe(v.BatteryVoltage),
+            safe(v.BatteryChargingIndication1),
+            safe(v.Odometer),
+            safe(v.Speed),
+            safe(v.RSSI),
+            safe(v.MachineStatus),
+            safe(v.Immobilization_status),
+            safe(v.ControllerTemperature)
+        ]
+      );
+
+
   } catch (e) {
     console.error("Rawdata insert failed:", e.message);
   }
@@ -222,6 +226,28 @@ const syncFleetFromTOR = async () => {
 
 setInterval(syncFleetFromTOR, 30000);
 syncFleetFromTOR();
+
+
+app.get('/api/telemetry/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const [rows] = await db.query(
+      `SELECT * FROM vehicle_rawdata WHERE HWID=? ORDER BY DeviceDate DESC LIMIT 1`,
+      [id]
+    );
+
+    if (!rows.length) return res.status(404).json({ error: 'No telemetry found' });
+
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: 'Telemetry fetch failed' });
+  }
+});
+
+app.post('/api/telemetry/:id/sync-history', async (req, res) => {
+  res.json({ success: true });
+});
 
 /* ---------------- FORWARDER INGEST ---------------- */
 app.post('/api/telemetry/bulk', async (req, res) => {
