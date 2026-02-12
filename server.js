@@ -227,8 +227,42 @@ const syncFleetFromTOR = async () => {
   }
 };
 
+// On backend start → fetch last 24 hours
+const loadLast24Hours = async () => {
+  try {
+    const to = new Date();
+    const from = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const fromISO = from.toISOString();
+    const toISO = to.toISOString();
+
+    console.log("🚀 Loading last 24-hour data on startup");
+
+    // Fetch all vehicles first
+    const payload = { hardwareId: "", equipmentCode: "" };
+    const telemetryList = await fetchAllPages(
+      '/MachineData/GetLatestMachineData',
+      payload
+    );
+
+    for (const v of telemetryList) {
+      const hwid = v.HWID;
+      if (!hwid) continue;
+
+      await syncHistoryFromTOR(hwid, fromISO, toISO);
+    }
+
+    console.log("✅ Startup 24-hour load completed");
+
+  } catch (e) {
+    console.error("❌ Startup load failed:", e.message);
+  }
+};
+
+// Start sequence
+loadLast24Hours();
 setInterval(syncFleetFromTOR, 30000);
-syncFleetFromTOR();
+
 
 
 app.get('/api/telemetry/:id', async (req, res) => {
@@ -529,9 +563,86 @@ app.get('/debug-tor', async (req, res) => {
   }
 });
 
+/* ---------------- TOR HISTORY SYNC ---------------- */
+const syncHistoryFromTOR = async (vehicleId, fromDate, toDate) => {
+  try {
+    if (!authToken && !(await getTorToken())) {
+      console.error('❌ TOR token missing');
+      return;
+    }
+
+    console.log(`☁️ Syncing history for ${vehicleId}`);
+    console.log(`From: ${fromDate} To: ${toDate}`);
+
+    const payload = {
+      hardwareId: vehicleId,
+      fromDate,
+      toDate,
+      pageNo: 1,
+      pageSize: 1000
+    };
+
+    const historyList = await fetchAllPages(
+      '/MachineData/GetMachineDataHistory',
+      payload
+    );
+
+    console.log(`History records received: ${historyList.length}`);
+
+    const safe = (x) => (x === undefined ? null : x);
+
+    for (const v of historyList) {
+      await db.execute(
+        `INSERT IGNORE INTO vehicle_rawdata
+        (HWID, ENTRYDATE, DeviceDate, ModelNumber, Latitude, Longitude,
+        StateofCharge, TimetoCharge, DistancetoEmpty1, KeyOnSignal,
+        BattTemp, BatteryVoltage, BatteryChargingIndication1,
+        Odometer, Speed, RSSI, MachineStatus, Immobilization_status, ControllerTemperature)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          safe(v.HWID),
+          safe(v.ENTRYDATE),
+          safe(v.DeviceDate),
+          safe(v.ModelNumber),
+          safe(v.Latitude),
+          safe(v.Longitude),
+          safe(v.StateofCharge),
+          safe(v.TimetoCharge),
+          safe(v.DistancetoEmpty1),
+          safe(v.KeyOnSignal),
+          safe(v.BattTemp),
+          safe(v.BatteryVoltage),
+          safe(v.BatteryChargingIndication1),
+          safe(v.Odometer),
+          safe(v.Speed),
+          safe(v.RSSI),
+          safe(v.MachineStatus),
+          safe(v.Immobilization_status),
+          safe(v.ControllerTemperature)
+        ]
+      );
+    }
+
+    console.log('✅ History sync completed');
+
+  } catch (err) {
+    console.error('❌ History sync failed:', err.message);
+  }
+};
+
+
 app.get('/api/report', async (req, res) => {
   try {
     const { vehicleId, from, to } = req.query;
+
+    if (!vehicleId) {
+      return res.status(400).json({ error: 'vehicleId required' });
+    }
+
+    // If date range provided → first sync from cloud
+    if (from && to) {
+      await syncHistoryFromTOR(vehicleId, from, to);
+    }
 
     let query = `
       SELECT *
@@ -542,12 +653,13 @@ app.get('/api/report', async (req, res) => {
 
     if (from && to) {
       query += ` AND DeviceDate BETWEEN ? AND ?`;
-      params.push(from,to);
+      params.push(from, to);
     }
 
     query += ` ORDER BY DeviceDate DESC LIMIT 5000`;
 
     const [rows] = await db.query(query, params);
+
     res.json(rows);
 
   } catch (e) {
