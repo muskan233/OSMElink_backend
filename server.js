@@ -235,14 +235,17 @@ const syncFleetFromTOR = async () => {
 } catch (e) {
   console.error("Insert failed:", e.message);
 }
-    }
+        }
 
+  } catch (e) {
+    console.error('❌ TOR sync failed:', e.message);
+  }
 };
 
-setInterval(async () => {
-   await fetchLatestMachineData();   // fetch current data
-}, 10000); // every 10 sec
 
+setInterval(async () => {
+   await syncFleetFromTOR();
+}, 10000);
 
 
 app.get('/api/telemetry/:id', async (req, res) => {
