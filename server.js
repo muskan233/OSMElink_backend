@@ -216,19 +216,29 @@ const syncFleetFromTOR = async () => {
   // CURRENT UPSERT
   await db.execute(
     `INSERT INTO vehicle_current
-     (vehicleId, Latitude, Longitude, Speed, DeviceDate)
-     VALUES (?, ?, ?, ?, ?)
+     (vehicleId, displayDeviceId, registrationNo, status, lat, lng, speed, battery, odometer, lastUpdate)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
-     Latitude = VALUES(Latitude),
-     Longitude = VALUES(Longitude),
-     Speed = VALUES(Speed),
-     DeviceDate = VALUES(DeviceDate)`,
+     displayDeviceId = VALUES(displayDeviceId),
+     registrationNo = VALUES(registrationNo),
+     status = VALUES(status),
+     lat = VALUES(lat),
+     lng = VALUES(lng),
+     speed = VALUES(speed),
+     battery = VALUES(battery),
+     odometer = VALUES(odometer),
+     lastUpdate = VALUES(lastUpdate)`,
     [
-      safe(v.HWID),
-      safe(v.Latitude),
-      safe(v.Longitude),
-      safe(v.Speed),
-      safe(v.DeviceDate)
+    safe(vehicleData.vehicleId),
+    safe(vehicleData.displayDeviceId),
+    safe(vehicleData.registrationNo),
+    safe(vehicleData.status),
+    safe(vehicleData.lat),
+    safe(vehicleData.lng),
+    safe(vehicleData.speed),
+    safe(vehicleData.battery),
+    safe(vehicleData.odometer),
+    safe(vehicleData.lastUpdate)
     ]
   );
 
@@ -356,9 +366,6 @@ app.get('/api/vehicles', async (req, res) => {
     speed: Number(v.speed) || 0,
     batteryLevel: Number(v.battery) || 0,
     totalKm: Number(v.odometer) || 0,
-    rssi: Number(v.rssi) || 0,
-    isCharging: v.isCharging === 1,
-    immobilized: v.immobilized === 1
   },
 
   lastUpdate: v.lastUpdate
