@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 
 dotenv.config();
 
+/* ---------------- SETUP ---------------- */
 const app = express();
 const PORT = process.env.PORT || 5000;
 
