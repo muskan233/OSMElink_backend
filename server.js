@@ -253,9 +253,21 @@ const syncFleetFromTOR = async () => {
 };
 
 
+let isSyncing = false;
+
 setInterval(async () => {
-   await syncFleetFromTOR();
-}, 10000);
+  if (isSyncing) {
+    console.log("⏳ Previous sync still running...");
+    return;
+  }
+
+  try {
+    isSyncing = true;
+    await syncFleetFromTOR();
+  } finally {
+    isSyncing = false;
+  }
+}, 60000); 
 
 
 app.get('/api/telemetry/:id', async (req, res) => {
