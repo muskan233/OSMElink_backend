@@ -158,6 +158,9 @@ const syncFleetFromTOR = async () => {
       if (hwid) metaMap.set(hwid, m);
     });
 
+    const rawRows = [];
+    const currentRows = [];
+
     for (const v of telemetryList) {
       const hwid = String(getVal(v, ['HWID', 'hardwareId'], '')).trim();
       if (!hwid) continue;
@@ -173,48 +176,62 @@ const syncFleetFromTOR = async () => {
         speed: Number(getVal(v, ['Speed'], 0)),
         battery: Number(getVal(v, ['StateofCharge'], 0)),
         odometer: Number(getVal(v, ['Odometer'], 0)),
-        rssi: Number(getVal(v, ['RSSI'], 0)),
-        isCharging: v.isCharging === true,
-        immobilized: v.Immobilization_status === "1",
         lastUpdate: new Date(v.DeviceDate || Date.now())
       };
 
       try {
-  const safe = (x) => (x === undefined ? null : x);
+
+      rawRows.push([
+        v.HWID,
+        v.ENTRYDATE,
+        v.DeviceDate,
+        v.ModelNumber,
+        v.Latitude,
+        v.Longitude,
+        v.StateofCharge,
+        v.TimetoCharge,
+        v.DistancetoEmpty1,
+        v.KeyOnSignal,
+        v.BattTemp,
+        v.BatteryVoltage,
+        v.BatteryChargingIndication1,
+        v.Odometer,
+        v.Speed,
+        v.RSSI,
+        v.MachineStatus,
+        v.Immobilization_status,
+        v.ControllerTemperature
+      ]);
+
+      currentRows.push([
+        vehicleData.vehicleId,
+        vehicleData.displayDeviceId,
+        vehicleData.registrationNo,
+        vehicleData.status,
+        vehicleData.lat,
+        vehicleData.lng,
+        vehicleData.speed,
+        vehicleData.battery,
+        vehicleData.odometer,
+        vehicleData.lastUpdate
+      ]);
+    }
 
   // HISTORY INSERT
-  await db.execute(
+  if(rawRows.length) {
+  await db.query(
     `INSERT INTO vehicle_rawdata
     (HWID, ENTRYDATE, DeviceDate, ModelNumber, Latitude, Longitude,
     StateofCharge, TimetoCharge, DistancetoEmpty1, KeyOnSignal,
     BattTemp, BatteryVoltage, BatteryChargingIndication1,
     Odometer, Speed, RSSI, MachineStatus, Immobilization_status, ControllerTemperature)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      safe(v.HWID),
-      safe(v.ENTRYDATE),
-      safe(v.DeviceDate),
-      safe(v.ModelNumber),
-      safe(v.Latitude),
-      safe(v.Longitude),
-      safe(v.StateofCharge),
-      safe(v.TimetoCharge),
-      safe(v.DistancetoEmpty1),
-      safe(v.KeyOnSignal),
-      safe(v.BattTemp),
-      safe(v.BatteryVoltage),
-      safe(v.BatteryChargingIndication1),
-      safe(v.Odometer),
-      safe(v.Speed),
-      safe(v.RSSI),
-      safe(v.MachineStatus),
-      safe(v.Immobilization_status),
-      safe(v.ControllerTemperature)
-    ]
-  );
+    [rawRows]
+  );}
 
   // CURRENT UPSERT
-  await db.execute(
+  if (currentRows.length) {
+  await db.query(
     `INSERT INTO vehicle_current
      (vehicleId, displayDeviceId, registrationNo, status, lat, lng, speed, battery, odometer, lastUpdate)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -228,24 +245,10 @@ const syncFleetFromTOR = async () => {
      battery = VALUES(battery),
      odometer = VALUES(odometer),
      lastUpdate = VALUES(lastUpdate)`,
-    [
-    safe(vehicleData.vehicleId),
-    safe(vehicleData.displayDeviceId),
-    safe(vehicleData.registrationNo),
-    safe(vehicleData.status),
-    safe(vehicleData.lat),
-    safe(vehicleData.lng),
-    safe(vehicleData.speed),
-    safe(vehicleData.battery),
-    safe(vehicleData.odometer),
-    safe(vehicleData.lastUpdate)
-    ]
-  );
+    [currentRows]
+  );}
 
-} catch (e) {
-  console.error("Insert failed:", e.message);
-}
-        }
+    console.log('✅ TOR sync completed');
 
   } catch (e) {
     console.error('❌ TOR sync failed:', e.message);
