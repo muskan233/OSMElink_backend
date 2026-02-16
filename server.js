@@ -332,7 +332,7 @@ app.get('/api/vehicles', async (req, res) => {
         battery,
         odometer,
         lastUpdate
-      FROM vehicles
+      FROM vehicle_current
     `);
 
     const formatted = rows.map(v => ({
