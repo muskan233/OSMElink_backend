@@ -179,43 +179,6 @@ const syncFleetFromTOR = async () => {
         lastUpdate: new Date(v.DeviceDate || Date.now())
       };
 
-      try {
-
-      rawRows.push([
-        v.HWID,
-        v.ENTRYDATE,
-        v.DeviceDate,
-        v.ModelNumber,
-        v.Latitude,
-        v.Longitude,
-        v.StateofCharge,
-        v.TimetoCharge,
-        v.DistancetoEmpty1,
-        v.KeyOnSignal,
-        v.BattTemp,
-        v.BatteryVoltage,
-        v.BatteryChargingIndication1,
-        v.Odometer,
-        v.Speed,
-        v.RSSI,
-        v.MachineStatus,
-        v.Immobilization_status,
-        v.ControllerTemperature
-      ]);
-
-      currentRows.push([
-        vehicleData.vehicleId,
-        vehicleData.displayDeviceId,
-        vehicleData.registrationNo,
-        vehicleData.status,
-        vehicleData.lat,
-        vehicleData.lng,
-        vehicleData.speed,
-        vehicleData.battery,
-        vehicleData.odometer,
-        vehicleData.lastUpdate
-      ]);
-    }
 
   // HISTORY INSERT
   if(rawRows.length) {
@@ -225,7 +188,7 @@ const syncFleetFromTOR = async () => {
     StateofCharge, TimetoCharge, DistancetoEmpty1, KeyOnSignal,
     BattTemp, BatteryVoltage, BatteryChargingIndication1,
     Odometer, Speed, RSSI, MachineStatus, Immobilization_status, ControllerTemperature)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    VALUES ?`,
     [rawRows]
   );}
 
@@ -234,7 +197,7 @@ const syncFleetFromTOR = async () => {
   await db.query(
     `INSERT INTO vehicle_current
      (vehicleId, displayDeviceId, registrationNo, status, lat, lng, speed, battery, odometer, lastUpdate)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES ?
      ON DUPLICATE KEY UPDATE
      displayDeviceId = VALUES(displayDeviceId),
      registrationNo = VALUES(registrationNo),
