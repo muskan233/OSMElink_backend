@@ -292,7 +292,63 @@ app.get('/api/telemetry/:id', async (req, res) => {
 });
 
 app.post('/api/telemetry/:id/sync-history', async (req, res) => {
-  res.json({ success: true });
+  try {
+    const { id } = req.params;
+    const { from, to } = req.body;
+
+    if (!authToken && !(await getTorToken()))
+      return res.status(500).json({ error: 'TOR token missing' });
+
+    const history = await fetchAllPages(
+      '/MachineData/GetMachineHistoryData',
+      {
+        hardwareId: id,
+        fromDate: from,
+        toDate: to
+      }
+    );
+
+    if (!history.length)
+      return res.json({ success: true, inserted: 0 });
+
+    const rows = history.map(v => [
+      v.HWID,
+      v.ENTRYDATE,
+      v.DeviceDate,
+      v.ModelNumber,
+      v.Latitude,
+      v.Longitude,
+      v.StateofCharge,
+      v.TimetoCharge,
+      v.DistancetoEmpty1,
+      v.KeyOnSignal,
+      v.BattTemp,
+      v.BatteryVoltage,
+      v.BatteryChargingIndication1,
+      v.Odometer,
+      v.Speed,
+      v.RSSI,
+      v.MachineStatus,
+      v.Immobilization_status,
+      v.ControllerTemperature
+    ]);
+
+    await db.query(
+      `INSERT INTO vehicle_rawdata
+       (HWID, ENTRYDATE, DeviceDate, ModelNumber, Latitude, Longitude,
+        StateofCharge, TimetoCharge, DistancetoEmpty1, KeyOnSignal,
+        BattTemp, BatteryVoltage, BatteryChargingIndication1,
+        Odometer, Speed, RSSI, MachineStatus, Immobilization_status, ControllerTemperature)
+       VALUES ?`,
+      [rows]
+    );
+
+    res.json({ success: true, inserted: rows.length });
+
+  } catch (e) {
+    console.error('History sync failed:', e.message);
+    res.status(500).json({ error: 'History sync failed' });
+  }
 });
 
 /* ---------------- FORWARDER INGEST ---------------- */
@@ -618,6 +674,7 @@ app.get('/api/report', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch report' });
   }
 });
+
 
 /* ---------------- START ---------------- */
 app.listen(PORT, '0.0.0.0', () => {
