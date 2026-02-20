@@ -742,8 +742,6 @@ app.get('/debug-tor', async (req, res) => {
   }
 });
 
-
-
 app.get('/api/report', async (req, res) => {
   try {
     const { vehicleId, from, to } = req.query;
