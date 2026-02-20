@@ -591,14 +591,25 @@ app.post('/api/customers', async (req, res) => {
 app.get('/api/dealers', async (req, res) => {
   try {
     const [rows] = await db.query(`
-      SELECT id, dealerName
+      SELECT 
+        id,
+        dealerName,
+        dealerCode,
+        contactPerson,
+        contactNumber,
+        email,
+        address,
+        city,
+        state,
+        createdAt
       FROM dealers
-      ORDER BY dealerName
+      ORDER BY id DESC
     `);
 
     res.json(rows);
+
   } catch (e) {
-    console.error('❌ /api/dealers error:', e.message);
+    console.error('Fetch dealers error:', e);
     res.status(500).json({ error: 'Failed to fetch dealers' });
   }
 });
@@ -607,29 +618,59 @@ app.post('/api/dealers', async (req, res) => {
   try {
     const {
       dealerName,
-      phone,
+      dealerCode,
+      contactPerson,
+      contactNumber,
       email,
       address,
+      city,
+      state,
       createLogin,
       username,
       password
     } = req.body;
 
+    if (!dealerName) {
+      return res.status(400).json({ error: "Dealer name is required" });
+    }
+
+    // 1️⃣ Insert dealer business data
     const [result] = await db.execute(
       `INSERT INTO dealers
-        (dealerName, phone, email, address)
-       VALUES (?, ?, ?, ?)`,
-      [dealerName, phone, email, address]
+       (dealerName, dealerCode, contactPerson, contactNumber, email, address, city, state)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        dealerName,
+        dealerCode,
+        contactPerson,
+        contactNumber,
+        email,
+        address,
+        city,
+        state
+      ]
     );
 
     const dealerId = result.insertId;
 
+    // 2️⃣ Create login in users table (if required)
     if (createLogin && username && password) {
+
+      // Check duplicate username
+      const [existing] = await db.query(
+        "SELECT id FROM users WHERE username = ?",
+        [username]
+      );
+
+      if (existing.length > 0) {
+        return res.status(400).json({ error: "Username already exists" });
+      }
+
       const hashedPassword = await bcrypt.hash(password, 10);
 
       await db.execute(
         `INSERT INTO users
-          (username, password, role, dealerId)
+         (username, password, role, dealerId)
          VALUES (?, ?, 'dealer', ?)`,
         [username, hashedPassword, dealerId]
       );
@@ -638,8 +679,8 @@ app.post('/api/dealers', async (req, res) => {
     res.json({ success: true });
 
   } catch (e) {
-    console.error('Dealer save error:', e.message);
-    res.status(500).json({ error: 'Failed to save dealer' });
+    console.error("Dealer save error:", e);
+    res.status(500).json({ error: e.message });
   }
 });
 
