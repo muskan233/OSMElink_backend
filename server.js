@@ -4,6 +4,8 @@ import axios from 'axios';
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import path from 'path';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import { fileURLToPath } from 'url';
 
 dotenv.config();
@@ -400,7 +402,7 @@ app.post('/api/telemetry/bulk', async (req, res) => {
 });
 
 /* ---------------- API ---------------- */
-app.get('/api/vehicles', async (req, res) => {
+app.get('/api/vehicles', verifyToken, async (req, res) => {
   try {
     const [rows] = await db.query(`
       SELECT 
@@ -454,16 +456,48 @@ app.get('/api/vehicles', async (req, res) => {
 
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
+
   try {
-    const [rows] = await db.query('SELECT * FROM users WHERE username = ?', [username]);
+    const [rows] = await db.query(
+      'SELECT * FROM users WHERE username = ?',
+      [username]
+    );
+
+    if (!rows.length)
+      return res.status(401).json({ message: "Invalid credentials" });
+
     const user = rows[0];
-    if (user && user.password === password) {
-      res.json({ success: true, user });
-    } else {
-      res.status(401).json({ success: false });
-    }
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match)
+      return res.status(401).json({ message: "Invalid credentials" });
+
+    const token = jwt.sign(
+      {
+        id: user.id,
+        role: user.role,
+        customerId: user.customerId,
+        dealerId: user.dealerId
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    res.json({
+      success: true,
+      token,
+      user:{
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        customerId: user.customerId,
+        dealerId: user.dealerId
+      }
+    });
+
   } catch (e) {
-    res.status(500).json({ error: 'Database query failed' });
+    console.error("Login error:", e.message);
+    res.status(500).json({ error: "Login failed" });
   }
 });
 
@@ -494,83 +528,70 @@ app.get('/api/customers', async (req, res) => {
   }
 });
 
+const verifyToken = (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+
+  if (!token)
+    return res.status(401).json({ message: "No token provided" });
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err)
+      return res.status(403).json({ message: "Invalid token" });
+
+    req.user = decoded;
+    next();
+  });
+};
+
 // CREATE or UPDATE customer
 app.post('/api/customers', async (req, res) => {
   try {
     const {
-      id,
       customerName,
       phoneNo,
       emailId,
       address,
       city,
       state,
-      isUser,
+      dealerId,
+      createLogin,
       username,
-      password,
-      role
+      password
     } = req.body;
 
     if (!customerName || !phoneNo) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    if (id) {
-      // UPDATE
+    // 1️⃣ Insert into customers table
+    const [result] = await db.execute(
+      `INSERT INTO customers
+        (customerName, phoneNo, emailId, address, city, state, dealerId)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [customerName, phoneNo, emailId, address, city, state, dealerId]
+    );
+
+    const customerId = result.insertId;
+
+    if (createLogin && username && password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+
       await db.execute(
-        `UPDATE customers SET
-          customerName=?,
-          phoneNo=?,
-          emailId=?,
-          address=?,
-          city=?,
-          state=?,
-          isUser=?,
-          username=?,
-          password=COALESCE(?, password),
-          role=?
-        WHERE id=?`,
-        [
-          customerName,
-          phoneNo,
-          emailId,
-          address,
-          city,
-          state,
-          isUser ? 1 : 0,
-          username,
-          password || null,
-          role || null,
-          id
-        ]
-      );
-    } else {
-      // INSERT
-      await db.execute(
-        `INSERT INTO customers
-          (customerName, phoneNo, emailId, address, city, state, isUser, username, password, role)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          customerName,
-          phoneNo,
-          emailId,
-          address,
-          city,
-          state,
-          isUser ? 1 : 0,
-          username,
-          password || null,
-          role || null
-        ]
+        `INSERT INTO users
+          (username, password, role, customerId)
+         VALUES (?, ?, 'customer', ?)`,
+        [username, hashedPassword, customerId]
       );
     }
 
     res.json({ success: true });
+
   } catch (e) {
-    console.error('❌ /api/customers save error:', e.message);
+    console.error('Customer save error:', e.message);
     res.status(500).json({ error: 'Failed to save customer' });
   }
 });
+
 
 /* ---------------- DEALERS API ---------------- */
 app.get('/api/dealers', async (req, res) => {
@@ -585,6 +606,46 @@ app.get('/api/dealers', async (req, res) => {
   } catch (e) {
     console.error('❌ /api/dealers error:', e.message);
     res.status(500).json({ error: 'Failed to fetch dealers' });
+  }
+});
+
+app.post('/api/dealers', async (req, res) => {
+  try {
+    const {
+      dealerName,
+      phone,
+      email,
+      address,
+      createLogin,
+      username,
+      password
+    } = req.body;
+
+    const [result] = await db.execute(
+      `INSERT INTO dealers
+        (dealerName, phone, email, address)
+       VALUES (?, ?, ?, ?)`,
+      [dealerName, phone, email, address]
+    );
+
+    const dealerId = result.insertId;
+
+    if (createLogin && username && password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      await db.execute(
+        `INSERT INTO users
+          (username, password, role, dealerId)
+         VALUES (?, ?, 'dealer', ?)`,
+        [username, hashedPassword, dealerId]
+      );
+    }
+
+    res.json({ success: true });
+
+  } catch (e) {
+    console.error('Dealer save error:', e.message);
+    res.status(500).json({ error: 'Failed to save dealer' });
   }
 });
 
