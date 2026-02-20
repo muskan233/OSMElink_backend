@@ -516,35 +516,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-/* ---------------- CUSTOMERS API ---------------- */
 
-// GET all customers
-app.get('/api/customers', async (req, res) => {
-  try {
-    const [rows] = await db.query(`
-      SELECT 
-        id,
-        customerName,
-        phoneNo,
-        emailId,
-        address,
-        city,
-        state,
-        isUser,
-        username
-      FROM customers
-      ORDER BY customerName
-    `);
-
-    res.json(rows);
-  } catch (e) {
-    console.error('❌ /api/customers error:', e.message);
-    res.status(500).json({ error: 'Failed to fetch customers' });
-  }
-});
-
-
-// CREATE or UPDATE customer
 app.post('/api/customers', async (req, res) => {
   try {
     const {
@@ -554,8 +526,7 @@ app.post('/api/customers', async (req, res) => {
       address,
       city,
       state,
-      dealerId,
-      createLogin,
+      isUser,
       username,
       password
     } = req.body;
@@ -567,14 +538,14 @@ app.post('/api/customers', async (req, res) => {
     // 1️⃣ Insert into customers table
     const [result] = await db.execute(
       `INSERT INTO customers
-        (customerName, phoneNo, emailId, address, city, state, dealerId)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [customerName, phoneNo, emailId, address, city, state, dealerId]
+        (customerName, phoneNo, emailId, address, city, state)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [customerName, phoneNo, emailId, address, city, state]
     );
 
     const customerId = result.insertId;
 
-    if (createLogin && username && password) {
+    if (isUser && username && password) {
       const hashedPassword = await bcrypt.hash(password, 10);
 
       await db.execute(
@@ -588,7 +559,7 @@ app.post('/api/customers', async (req, res) => {
     res.json({ success: true });
 
   } catch (e) {
-    console.error('Customer save error:', e.message);
+    console.error('Customer save error:', e);
     res.status(500).json({ error: 'Failed to save customer' });
   }
 });
