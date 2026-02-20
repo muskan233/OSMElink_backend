@@ -516,6 +516,28 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+app.get('/api/customers', async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        id,
+        customerName,
+        phoneNo,
+        emailId,
+        address,
+        city,
+        state
+      FROM customers
+      ORDER BY id DESC
+    `);
+
+    res.json(rows);
+
+  } catch (e) {
+    console.error('Fetch customers error:', e);
+    res.status(500).json({ error: 'Failed to fetch customers' });
+  }
+});
 
 app.post('/api/customers', async (req, res) => {
   try {
