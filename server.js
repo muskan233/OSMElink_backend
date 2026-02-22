@@ -714,13 +714,13 @@ app.put('/api/vehicles/:id', async (req, res) => {
 
   try {
     await db.execute(
-      `UPDATE vehicle_current
+      `UPDATE vehicles
        SET displayDeviceId = ?,
            registrationNo = ?,
-           chassisNumber = ?,
+           chassis_no = ?,
            customerId = ?,
            dealerId = ?,
-           equipmentConfig = ?
+           invoiceDate = ?
        WHERE vehicleId = ?`,
       [
         displayDeviceId,
@@ -728,7 +728,7 @@ app.put('/api/vehicles/:id', async (req, res) => {
         chassisNumber,
         customerId,
         dealerId,
-        JSON.stringify(equipmentConfig),
+        invoiceDate,
         id
       ]
     );
