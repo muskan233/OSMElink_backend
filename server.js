@@ -754,6 +754,9 @@ app.put('/api/vehicles/:id', async (req, res) => {
     console.error('Vehicle update error:', err);
     res.status(500).json({ error: 'Update failed' });
   }
+
+  const [result] = await db.execute(query, values);
+  console.log("Affected rows:", result.affectedRows);
 });
 
 /* ---------------- TEST TOR AUTH ---------------- */
