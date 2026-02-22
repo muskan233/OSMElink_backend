@@ -167,6 +167,21 @@ const syncFleetFromTOR = async () => {
       const hwid = String(getVal(v, ['HWID', 'hardwareId'], '')).trim();
       if (!hwid) continue;
 
+      const [existingVehicle] = await db.execute(
+        "SELECT vehicleId FROM vehicles WHERE vehicleId = ?",
+        [hwid]
+      );
+
+      if (existingVehicle.length === 0) {
+        await db.execute(
+          `INSERT INTO vehicles (vehicleId)
+          VALUES (?)`,
+          [hwid]
+        );
+
+        console.log("🆕 Auto-added vehicle to vehicles table:", hwid);
+      }
+
       const meta = metaMap.get(hwid) || {};
 
       const vehicleData = {
@@ -723,12 +738,12 @@ app.put('/api/vehicles/:id', async (req, res) => {
            invoiceDate = ?
        WHERE vehicleId = ?`,
       [
-        displayDeviceId,
-        registrationNo,
-        chassisNumber,
-        customerId,
-        dealerId,
-        invoiceDate,
+        displayDeviceId || null,
+        registrationNo || null,
+        chassisNumber || null,
+        customerId || null,
+        dealerId || null,
+        invoiceDate || null,
         id
       ]
     );
