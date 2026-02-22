@@ -709,7 +709,7 @@ app.put('/api/vehicles/:id', async (req, res) => {
     registrationNo,
     customerId,
     dealerId,
-    equipmentConfig
+    invoiceDate
   } = req.body;
 
   try {
