@@ -419,7 +419,9 @@ const verifyToken = (req, res, next) => {
 /* ---------------- API ---------------- */
 app.get('/api/vehicles', verifyToken, async (req, res) => {
   try {
-    const [rows] = await db.query(`
+    const { role, customerId, dealerId } = req.user;
+
+    let query = `
       SELECT 
         vehicleId,
         displayDeviceId,
@@ -432,32 +434,46 @@ app.get('/api/vehicles', verifyToken, async (req, res) => {
         odometer,
         lastUpdate
       FROM vehicle_current
-    `);
+    `;
 
-    const formatted = rows.map(v => ({
-  id: v.vehicleId,
-  vehicleId: v.vehicleId,
+    const params = [];
 
-  displayDeviceId: v.displayDeviceId,
-  registrationNo: v.registrationNo,
-  status: v.status,
+    //filtering based on role
+    if (role === 'customer') {
+      query += ` WHERE customerId = ?`;
+      params.push(customerId);
+    } 
+    else if (role === 'dealer') {
+      query += ` WHERE dealerId = ?`;
+      params.push(dealerId);
+    }
+  
+  const [rows] = await db.query(query, params);
 
-  equipmentConfig: {
-    active: v.status !== 'Offline',
-  },
+  const formatted = rows.map(v => ({
+    id: v.vehicleId,
+    vehicleId: v.vehicleId,
 
-  location: {
-    lat: Number(v.lat) || 0,
-    lng: Number(v.lng) || 0
-  },
+    displayDeviceId: v.displayDeviceId,
+    registrationNo: v.registrationNo,
+    status: v.status,
 
-  metrics: {
-    speed: Number(v.speed) || 0,
-    batteryLevel: Number(v.battery) || 0,
-    totalKm: Number(v.odometer) || 0,
-  },
+    equipmentConfig: {
+      active: v.status !== 'Offline',
+    },
 
-  lastUpdate: v.lastUpdate
+    location: {
+      lat: Number(v.lat) || 0,
+      lng: Number(v.lng) || 0
+    },
+
+    metrics: {
+      speed: Number(v.speed) || 0,
+      batteryLevel: Number(v.battery) || 0,
+      totalKm: Number(v.odometer) || 0,
+    },
+
+    lastUpdate: v.lastUpdate
 }));
 
 
@@ -684,27 +700,46 @@ app.post('/api/dealers', async (req, res) => {
   }
 });
 
-app.get('/api/vehicles/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+app.put('/api/vehicles/:id', async (req, res) => {
+  const { id } = req.params;
 
-    const [rows] = await db.query(
-      "SELECT * FROM vehicle_current WHERE vehicleId = ?",
-      [id]
+  const {
+    displayDeviceId,
+    chassisNumber,
+    registrationNo,
+    customerId,
+    dealerId,
+    equipmentConfig
+  } = req.body;
+
+  try {
+    await db.execute(
+      `UPDATE vehicle_current
+       SET displayDeviceId = ?,
+           registrationNo = ?,
+           chassisNumber = ?,
+           customerId = ?,
+           dealerId = ?,
+           equipmentConfig = ?
+       WHERE vehicleId = ?`,
+      [
+        displayDeviceId,
+        registrationNo,
+        chassisNumber,
+        customerId,
+        dealerId,
+        JSON.stringify(equipmentConfig),
+        id
+      ]
     );
 
-    if (rows.length === 0) {
-      return res.status(404).json({ message: "Vehicle not found" });
-    }
-
-    res.json(rows[0]);
+    res.json({ success: true });
 
   } catch (err) {
-    console.error("Vehicle fetch error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error('Vehicle update error:', err);
+    res.status(500).json({ error: 'Update failed' });
   }
 });
-
 
 /* ---------------- TEST TOR AUTH ---------------- */
 app.get('/test-tor-auth', async (req, res) => {
