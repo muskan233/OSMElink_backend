@@ -15,18 +15,26 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // CORS setup
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://blue-seal-873817.hostingersite.com'
+];
+
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'https://osmelink-frontend.onrender.com',
-    'https://blue-seal-873817.hostingersite.com'
-  ],
+  origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps, curl, postman)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET','POST','PUT','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization'],
   credentials: true
 }));
-
-app.options('*', cors()); 
 
 app.use(express.json({ limit: '100mb' }));
 
@@ -754,9 +762,6 @@ app.put('/api/vehicles/:id', async (req, res) => {
     console.error('Vehicle update error:', err);
     res.status(500).json({ error: 'Update failed' });
   }
-
-  const [result] = await db.execute(query, values);
-  console.log("Affected rows:", result.affectedRows);
 });
 
 /* ---------------- TEST TOR AUTH ---------------- */
