@@ -144,7 +144,6 @@ const deriveVehicleStatus = (v) => {
   return 'Off';
 };
 
-
 /* ---------------- TOR → VEHICLE SYNC ---------------- */
 const syncFleetFromTOR = async () => {
   try {
