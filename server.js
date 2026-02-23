@@ -144,6 +144,7 @@ const deriveVehicleStatus = (v) => {
   return 'Off';
 };
 
+
 /* ---------------- TOR → VEHICLE SYNC ---------------- */
 const syncFleetFromTOR = async () => {
   try {
@@ -733,7 +734,7 @@ app.put('/api/vehicles/:id', async (req, res) => {
     dealerId,
     invoiceDate
   } = req.body;
-
+  console.log("UPDATE PAYLOAD:", req.body);
   try {
     await db.execute(
       `UPDATE vehicles
@@ -745,14 +746,14 @@ app.put('/api/vehicles/:id', async (req, res) => {
            invoiceDate = ?
        WHERE vehicleId = ?`,
       [
-        displayDeviceId || null,
-        registrationNo || null,
-        chassisNumber || null,
-        customerId || null,
-        dealerId || null,
-        invoiceDate || null,
-        id
-      ]
+      displayDeviceId ?? null,
+      registrationNo ?? null,
+      chassisNumber ?? null,
+      customerId ?? null,
+      dealerId ?? null,
+      invoiceDate ?? null,
+      id
+    ]
     );
 
     res.json({ success: true });
@@ -829,5 +830,5 @@ app.get('/api/report', async (req, res) => {
 
 /* ---------------- START ---------------- */
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Backend running on ${PORT}`);
+  console.log(` Backend running on ${PORT}`);
 });
