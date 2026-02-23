@@ -446,28 +446,34 @@ app.get('/api/vehicles', verifyToken, async (req, res) => {
 
     let query = `
       SELECT 
-        vehicleId,
-        displayDeviceId,
-        registrationNo,
-        status,
-        lat,
-        lng,
-        speed,
-        battery,
-        odometer,
-        lastUpdate
-      FROM vehicle_current
+        vc.vehicleId,
+        v.displayDeviceId,
+        v.registrationNo,
+        v.customerId,
+        v.dealerId,
+        v.chassis_no,
+        v.invoiceDate,
+        vc.status,
+        vc.lat,
+        vc.lng,
+        vc.speed,
+        vc.battery,
+        vc.odometer,
+        vc.lastUpdate
+      FROM vehicle_current vc
+      LEFT JOIN vehicles v 
+        ON vc.vehicleId = v.vehicleId
     `;
 
     const params = [];
 
     //filtering based on role
     if (role === 'customer') {
-      query += ` WHERE customerId = ?`;
+      query += ` WHERE v.customerId = ?`;
       params.push(customerId);
     } 
     else if (role === 'dealer') {
-      query += ` WHERE dealerId = ?`;
+      query += ` WHERE v.dealerId = ?`;
       params.push(dealerId);
     }
   
@@ -476,7 +482,10 @@ app.get('/api/vehicles', verifyToken, async (req, res) => {
   const formatted = rows.map(v => ({
     id: v.vehicleId,
     vehicleId: v.vehicleId,
-
+    customerId: v.customerId,
+    dealerId: v.dealerId,
+    chassisNumber: v.chassis_no,
+    invoiceDate: v.invoiceDate,
     displayDeviceId: v.displayDeviceId,
     registrationNo: v.registrationNo,
     status: v.status,
