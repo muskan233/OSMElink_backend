@@ -316,7 +316,7 @@ app.get('/api/telemetry/:id', async (req, res) => {
   }
 });
 
-app.post('/api/telemetry/:id/sync-history', async (req, res) => {
+app.post('/api/vehicle_rawdata/:id/sync-history', async (req, res) => {
   try {
     const { id } = req.params;
     const { from, to } = req.body;
