@@ -427,13 +427,17 @@ app.post('/api/telemetry/bulk', async (req, res) => {
 const verifyToken = (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];
 
-  if (!token)
-    return res.status(401).json({ message: "No token provided" });
+  console.log("---- VERIFY DEBUG ----");
+  console.log("Token received:", token);
+  console.log("JWT_SECRET:", process.env.JWT_SECRET);
 
   jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err)
+    if (err) {
+      console.log("VERIFY ERROR:", err.message);
       return res.status(403).json({ message: "Invalid token" });
+    }
 
+    console.log("Decoded:", decoded);
     req.user = decoded;
     next();
   });
@@ -835,6 +839,7 @@ app.get('/api/report', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch report' });
   }
 });
+
 
 /* ---------------- START ---------------- */
 app.listen(PORT, '0.0.0.0', () => {
