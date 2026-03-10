@@ -224,7 +224,8 @@ const syncFleetFromTOR = async () => {
         v.RSSI,
         v.MachineStatus,
         v.Immobilization_status,
-        v.ControllerTemperature
+        v.ControllerTemperature,
+        JSON.stringify(v)
       ]);
 
       currentRows.push([
@@ -248,7 +249,7 @@ const syncFleetFromTOR = async () => {
         (HWID, ENTRYDATE, DeviceDate, ModelNumber, Latitude, Longitude,
         StateofCharge, TimetoCharge, DistancetoEmpty1, KeyOnSignal,
         BattTemp, BatteryVoltage, BatteryChargingIndication1,
-        Odometer, Speed, RSSI, MachineStatus, Immobilization_status, ControllerTemperature)
+        Odometer, Speed, RSSI, MachineStatus, Immobilization_status, ControllerTemperature, rawTor)
         VALUES ?`,
         [rawRows]
       );
