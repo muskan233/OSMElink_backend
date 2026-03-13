@@ -816,7 +816,8 @@ app.get('/debug-tor', async (req, res) => {
 
 app.get('/api/report', async (req, res) => {
   try {
-    const { vehicleId, from, to } = req.query;
+    const vehicleId = req.query.vehicleId || req.query.id;
+    const { from, to } = req.query;
 
     let query = `
       SELECT *
@@ -827,7 +828,7 @@ app.get('/api/report', async (req, res) => {
 
     if (from && to) {
       query += ` AND DeviceDate BETWEEN ? AND ?`;
-      params.push(from,to);
+      params.push(from, to);
     }
 
     query += ` ORDER BY DeviceDate DESC LIMIT 5000`;
