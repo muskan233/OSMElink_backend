@@ -816,8 +816,7 @@ app.get('/debug-tor', async (req, res) => {
 
 app.get('/api/report', async (req, res) => {
   try {
-    const vehicleId = req.query.vehicleId || req.query.id;
-    const { from, to } = req.query;
+    const { vehicleId, from, to } = req.query;
 
     let query = `
       SELECT *
@@ -834,7 +833,21 @@ app.get('/api/report', async (req, res) => {
     query += ` ORDER BY DeviceDate DESC LIMIT 5000`;
 
     const [rows] = await db.query(query, params);
-    res.json(rows);
+
+    const formatted = rows.map(r => ({
+      time: r.DeviceDate,
+      speed: Number(r.Speed),
+      battery: Number(r.StateofCharge),
+      voltage: Number(r.BatteryVoltage),
+      temperature: Number(r.BattTemp),
+      status: r.MachineStatus,
+      lat: Number(r.Latitude),
+      lng: Number(r.Longitude),
+      odometer: Number(r.Odometer),
+      signal: Number(r.RSSI)
+    }));
+
+    res.json(formatted);
 
   } catch (e) {
     console.error("Report API error:", e.message);
